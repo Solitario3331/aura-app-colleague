@@ -1682,11 +1682,23 @@
     var box = $("reminder"); if (!box) return;
     var txt = box.querySelector(".rm-text"), seenKey = "auraReminderSeen", cur = { id: "", text: "" }, last = 0;
     function seen() { try { return localStorage.getItem(seenKey) || ""; } catch (e) { return ""; } }
-    function render() { var on = !!(cur.text && cur.id !== seen()); box.hidden = !on; if (on) txt.textContent = cur.text; }
-    box.querySelector(".rm-x").addEventListener("click", function () {
-      try { localStorage.setItem(seenKey, cur.id); } catch (e) { /* ignore */ }
-      render();
-    });
+    function splashUp() { var s = $("splash"); return !!(s && s.isConnected && !s.classList.contains("hide")); }
+    function render() {
+      var on = !!(cur.text && cur.id !== seen());
+      if (on && splashUp()) { box.hidden = true; setTimeout(function () { render(); check(); }, 250); return; } // pop up right after the loading screen, so its animation is seen
+      box.hidden = !on; if (on) txt.textContent = cur.text;
+    }
+    var shownOnFront = false;
+    function markSeen() { shownOnFront = false; try { localStorage.setItem(seenKey, cur.id); } catch (e) { /* ignore */ } render(); }
+    // it counts as read once she has seen it on the front page and then leaves that page or starts typing: then it is gone for good
+    function check() {
+      var m = $("main"), front = !!(m && m.classList.contains("is-empty"));
+      if (box.hidden) return;
+      if (front) shownOnFront = true; else if (shownOnFront) markSeen();
+    }
+    box.querySelector(".rm-x").addEventListener("click", markSeen);
+    var mEl = $("main"); if (mEl && window.MutationObserver) new MutationObserver(check).observe(mEl, { attributes: true, attributeFilter: ["class"] });
+    var inEl = $("input"); if (inEl) inEl.addEventListener("input", function () { if (shownOnFront && !box.hidden) markSeen(); });
     function load() {
       if (!api || !api.get_reminder) return;
       last = Date.now();
@@ -1694,9 +1706,11 @@
         if (!r) return;
         cur = { id: String(r.id || ""), text: String(r.text || "") };
         render();
+        check();
       }).catch(noop);
     }
-    setInterval(function () { if (api && Date.now() - last > 300000) load(); }, 15000); // first read as soon as the app is ready, then every 5 minutes
+    var firstTry = setInterval(function () { if (api) { clearInterval(firstTry); load(); } }, 300); // first read the moment the app is ready
+    setInterval(function () { if (api && Date.now() - last > 300000) load(); }, 15000); // then every 5 minutes
     window.addEventListener("focus", function () { if (Date.now() - last > 60000) load(); });
   })();
 
@@ -1896,7 +1910,7 @@
   applySettings();
 
   /* ---------- updates: quiet check at start, badge on Settings, progress overlay, self-restart ---------- */
-  var updAvail = "", updBusy = false, updOv = null;
+  var updAvail = "", updBusy = false, updOv = null, updPending = "";  // updPending = version installed, restart still to do
   function setUpdateBadge(v) {
     updAvail = v || "";
     ["settingsBtn", "railSettings"].forEach(function (id) {
@@ -1908,7 +1922,7 @@
   }
   function updKey(e) {
     if (!updOv || e.altKey) return;
-    var err = updOv.classList.contains("err");
+    var err = updOv.classList.contains("err") || updOv.classList.contains("ask");
     if (err && e.key === "Escape") { e.preventDefault(); e.stopPropagation(); updHide(); return; }
     if (err && updOv.contains(e.target) && (e.key === "Tab" || e.key === "Enter" || e.key === " ")) return;
     e.preventDefault(); e.stopPropagation(); /* nothing else while Aura updates */
@@ -1927,7 +1941,7 @@
       if (!el.inert) { el.inert = true; el.setAttribute("data-upd-inert", ""); } /* no clicks or focus behind */
     });
     document.body.appendChild(updOv);
-    updOv.querySelector("#updRetry").addEventListener("click", runUpdate);
+    updOv.querySelector("#updRetry").addEventListener("click", function () { if (updPending) restartNow(); else runUpdate(); });
     updOv.querySelector("#updClose").addEventListener("click", updHide);
     document.addEventListener("keydown", updKey, true);
     requestAnimationFrame(function () { if (updOv) { updOv.classList.add("show"); updOv.querySelector(".upd-card").focus(); } });
@@ -1938,6 +1952,7 @@
     document.removeEventListener("keydown", updKey, true);
     Array.prototype.forEach.call(document.querySelectorAll("[data-upd-inert]"), function (el) { el.inert = false; el.removeAttribute("data-upd-inert"); });
     updOv.remove(); updOv = null;
+    if (updPending) toast("Update installed. Restart Aura when you are ready (Settings > Update).");
     if (!document.querySelector(".modal-back")) ovResume();
     var b = document.querySelector("#setUpBtn");
     if (b) b.focus(); else focusInput();
@@ -1961,23 +1976,55 @@
       return api.update_install();
     }).then(function (r) {
       if (!r || !r.ok) throw r;
-      updStep("Restarting Aura...");
-      return api.update_restart();
-    }).then(function (r) {
-      if (!r || !r.ok) throw r;
-      /* this window closes in a moment and the new Aura opens by itself; the overlay stays until then */
+      updPending = r.version || updAvail || "new"; updBusy = false;
+      askRestart();
     }).catch(function (r) {
       updBusy = false;
       updStep((r && r.status) || "The update did not finish. Aura is still running.", true);
     });
   }
+  /* The update is installed. Let the person choose: restart now, or later (the new version starts the next time Aura opens). */
+  function askRestart() {
+    var o = updShow();
+    o.classList.remove("err"); o.classList.add("ask");
+    o.querySelector("#updTitle").textContent = "Update installed";
+    o.querySelector("#updStep").textContent = "Restart Aura to start using the new version, or do it later.";
+    o.querySelector(".upd-actions").hidden = false;
+    o.querySelector("#updClose").textContent = "Later";
+    o.querySelector("#updRetry").textContent = "Restart now";
+    o.querySelector("#updRetry").focus();
+    setUpdateBadge("");
+    var b = document.querySelector("#setUpBtn"), n = document.querySelector("#setUpNote");
+    if (b && n) paintUpdateRow(b, n);
+  }
+  function restartNow() {
+    if (!api || updBusy) return;
+    if (!updOv && guardBusy()) return; /* never cut off an answer that is still coming in */
+    updBusy = true; if (!updOv) ovSuspend();
+    var o = updShow(); o.classList.remove("ask");
+    updStep("Restarting Aura...");
+    api.update_restart().then(function (r) {
+      if (!r || !r.ok) throw r;
+      /* this window closes in a moment and the new Aura opens by itself; the overlay stays until then */
+    }).catch(function (r) {
+      updBusy = false;
+      o.querySelector("#updClose").textContent = "Close"; o.querySelector("#updRetry").textContent = "Retry";
+      updStep((r && r.status) || "Aura could not restart. It is still running.", true);
+    });
+  }
   function paintUpdateRow(btn, note) {
+    if (updPending) {
+      note.textContent = "Version " + updPending + " is installed. Restart Aura to start using it.";
+      btn.textContent = "Restart now"; btn.classList.add("primary");
+      return;
+    }
     if (!updAvail) return;
     note.textContent = "Version " + updAvail + " is ready. Aura restarts by itself afterwards.";
     btn.textContent = "Update now"; btn.classList.add("primary");
   }
   function checkForUpdates(btn, note) {
     if (!api || btn.classList.contains("busy")) return;
+    if (updPending) { restartNow(); return; }
     if (updAvail) { runUpdate(); return; }
     btn.classList.add("busy"); btn.setAttribute("aria-busy", "true"); note.textContent = "Checking...";
     api.check_update().then(function (r) {

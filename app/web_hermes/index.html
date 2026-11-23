@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="auto">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="dark light">
+<title>Aura</title>
+<!-- theme before first paint: saved choice, else follow Windows -->
+<script>try{var t=localStorage.getItem("auraTheme");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t;}catch(e){}</script>
+<link rel="stylesheet" href="aura.css">
+</head>
+<body>
+  <!-- Loading screen: the Hermes particle loader ("fourier-flow", drawn by aura.js) + "Connecting…" (about 2.4 s) -->
+  <div id="splash" aria-hidden="true">
+    <div class="ld sp-loader" id="spLoader"></div>
+    <div class="sp-word">Connecting…</div>
+  </div>
+
+  <!-- Far-left icon rail (buttons forward to the real controls) -->
+  <nav id="rail" aria-label="App">
+    <div class="rail-top" id="railLogo" aria-hidden="true"></div>
+    <button id="railChat" class="rail-btn on" type="button" title="Chats (Ctrl+B)" aria-label="Show or hide chats"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5h16v10.5H9.5L5 20v-4H4z"/></svg></button>
+    <button id="railNew" class="rail-btn" type="button" title="New chat" aria-label="New chat"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4.5v15M4.5 12h15"/></svg></button>
+    <button id="railBrowser" class="rail-btn" type="button" title="Browser" aria-label="Show or hide the browser"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c3.2 3.4 3.2 13.6 0 17M12 3.5c-3.2 3.4-3.2 13.6 0 17"/></svg></button>
+    <span class="rail-gap"></span>
+    <button id="railTheme" class="rail-btn" type="button" title="Light / dark" aria-label="Switch light or dark theme"><svg class="i-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M18.7 5.3l-1.4 1.4M6.7 17.3l-1.4 1.4"/></svg><svg class="i-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></svg></button>
+    <button id="railSettings" class="rail-btn" type="button" title="Settings" aria-label="Settings"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
+  </nav>
+
+  <!-- Chat list column -->
+  <aside id="sidebar" aria-label="Chats">
+    <div class="side-head">
+      <div class="brand"><div class="brand-text"><strong>Chats</strong><small>Online</small></div></div>
+      <button id="newChat" type="button" title="New chat" aria-label="New chat"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
+      <button id="searchChat" type="button" title="Search chats (Ctrl+K)" aria-label="Search chats"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4 4"/></svg></button>
+    </div>
+    <div class="filter"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4 4"/></svg><input id="chatFilter" type="text" spellcheck="false" autocomplete="off" placeholder="Filter conversations…" aria-label="Filter conversations"></div>
+    <div class="label side-label" aria-hidden="true">Recent</div>
+    <nav id="sessionList" aria-label="Chat history"></nav>
+    <div class="foot">
+      <div id="version"></div>
+      <button id="settingsBtn" type="button" title="Settings" aria-label="Settings"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M18.7 5.3l-2.1 2.1M7.4 16.6l-2.1 2.1"/></svg><span>Settings</span></button>
+    </div>
+  </aside>
+
+  <!-- Middle: conversation + composer -->
+  <main id="main">
+    <div id="topstrip">
+      <button id="sbToggle" type="button" title="Show or hide chats (Ctrl+B)" aria-label="Show or hide chats"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4zM9 5v14"/></svg></button>
+      <span id="tsDrag" class="ts-drag"></span>
+      <span id="chatTitle" class="ts-title" aria-hidden="true"></span>
+    </div>
+    <div id="messages" role="log" aria-live="polite" aria-label="Conversation"></div>
+    <!-- Front page: shown by CSS only while #messages is empty -->
+    <div id="welcome">
+      <p class="wl-wordmark" aria-label="Aura">AURA</p>
+      <h1 class="wl-title">What are we building today?</h1>
+    </div>
+    <button id="toBottom" type="button" title="Scroll to the newest message" aria-label="Scroll to the newest message"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M6 13l6 6 6-6"/></svg></button>
+    <div id="composerWrap">
+      <div id="thumbs" aria-label="Pictures to send"></div>
+      <div id="composer">
+        <label for="input" class="sr-only">Message</label>
+        <div id="inputWrap"><textarea id="input" rows="1" placeholder="Message Aura…"></textarea></div>
+        <div class="cmp-tools">
+          <button id="attachBtn" class="round ghost" type="button" title="Add picture (or paste / drop one)" aria-label="Add picture"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 11.5l-8.2 8.2a5 5 0 0 1-7.1-7.1l8.6-8.6a3.4 3.4 0 0 1 4.8 4.8l-8.5 8.5a1.7 1.7 0 0 1-2.4-2.4l7.8-7.8"/></svg></button><input type="file" id="fileIn" accept="image/*" multiple hidden>
+          <div class="mode-pick">
+            <button id="modeBtn" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="modeMenu" title="Mode"><span id="modeLabel">Aura</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10l5 5 5-5"/></svg></button>
+            <div id="modeMenu" role="menu" aria-label="Mode" hidden></div>
+            <div id="pills" role="group" aria-label="Mode" aria-hidden="true"></div>
+          </div>
+          <button id="thinkBtn" type="button" title="Thinking" aria-label="Thinking level">Thinking: Medium</button>
+          <span class="cmp-fill"></span>
+          <button id="sendBtn" class="round" type="button" title="Send (Enter)" aria-label="Send"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M6 11l6-6 6 6"/></svg></button>
+          <button id="stopBtn" class="round" type="button" title="Stop (Esc)" aria-label="Stop"></button>
+        </div>
+      </div>
+      <div class="under">
+        <div id="pillHint" aria-live="polite"></div>
+        <div id="hint"><kbd>Enter</kbd> send &middot; <kbd>Shift+Enter</kbd> new line &middot; <kbd>Esc</kbd> stop</div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Right: browser pane, styled as the WORKSPACE panel -->
+  <aside id="preview" aria-label="Preview and browser">
+    <div class="pv-head">
+      <span class="pv-title">Workspace</span><span class="pv-tag">Main</span>
+      <span class="pv-fill"></span>
+      <button id="pvWin" type="button" title="Open in a browser window" aria-label="Open in a browser window"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4zM4 9h16"/></svg></button>
+      <button id="pvOpen" type="button" title="Open in my normal browser" aria-label="Open in my normal browser"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M18 14v5H5V6h5"/></svg></button>
+      <button id="pvClose" type="button" title="Close" aria-label="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    </div>
+    <div class="pv-tabs" role="tablist" aria-label="Workspace">
+      <span class="pv-tabbtn on" role="tab" aria-selected="true">Preview</span>
+    </div>
+    <div class="pv-bar">
+      <button id="pvBack" type="button" title="Back" aria-label="Back"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button>
+      <button id="pvFwd" type="button" title="Forward" aria-label="Forward"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
+      <button id="pvReload" type="button" title="Reload" aria-label="Reload"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg></button>
+      <button id="pvHome" type="button" title="Home" aria-label="Home"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11l8-7 8 7M6 10v9h12v-9"/></svg></button>
+      <input id="pvAddr" class="pv-addr" type="text" spellcheck="false" autocomplete="off" placeholder="Search or type an address" aria-label="Address">
+    </div>
+    <div class="pv-body">
+      <div class="pv-progress" aria-hidden="true"></div>
+      <iframe id="pvFrame" hidden title="Web page" sandbox="allow-scripts allow-forms allow-same-origin allow-popups allow-modals"></iframe>
+      <div id="pvOverlayHost" hidden></div>
+      <div id="pvStart" class="pv-card"><span class="pv-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c3.2 3.4 3.2 13.6 0 17M12 3.5c-3.2 3.4-3.2 13.6 0 17"/></svg></span><span class="pv-kicker">Preview</span><p>Nothing to preview yet.<br>Websites Aura builds show up here live. You can also type an address above.</p><button id="pvNewest" type="button">Open my newest website</button></div>
+      <div id="pvBlocked" class="pv-card" hidden><span class="pv-kicker">Blocked by the site</span><strong>This site can't be shown inside Aura</strong><span id="pvBlockedUrl" class="pv-url2"></span><p>Some big sites refuse to load in a side pane. They work fine in their own window.</p><div class="pv-actions"><button id="pvBlockWin" type="button">Open in a browser window</button><button id="pvBlockExt" type="button">Open in my normal browser</button></div></div>
+    </div>
+  </aside>
+  <button id="pvTab" type="button" title="Open the preview" aria-label="Open the preview" hidden>PREVIEW</button>
+
+  <!-- Window buttons (no native title bar) -->
+  <div id="winctl">
+    <button id="paneToggle" type="button" title="Preview &amp; browser" aria-label="Show or hide the preview" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4zM15 5v14"/></svg></button>
+    <button id="wcMin" type="button" title="Minimize" aria-label="Minimize"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6h8"/></svg></button>
+    <button id="wcMax" type="button" title="Maximize" aria-label="Maximize"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 2.5h7v7h-7z"/></svg></button>
+    <button id="wcClose" type="button" title="Close" aria-label="Close"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 2l8 8M10 2L2 10"/></svg></button>
+  </div>
+
+  <!-- Hidden terminal mode (its scripts load only when it is opened) -->
+  <section id="termView" style="display:none;">
+    <div class="term-bar">
+      <button id="backChat" class="tbtn" type="button">Back to chat</button>
+      <button id="restartClaude" class="tbtn" type="button">Restart</button>
+    </div>
+    <div class="term-body"><div id="termHost"></div></div>
+  </section>
+
+  <div id="toast" role="status" aria-live="polite"></div>
+  <script src="aura.js"></script>
+</body>
+</html>

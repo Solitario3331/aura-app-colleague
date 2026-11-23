@@ -1,0 +1,7 @@
+pywebview
+requests
+pillow
+pywinpty
+pytest
+ruff
+pypdf

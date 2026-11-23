@@ -1073,3 +1073,6 @@ body.calm .upd-bar i { width: 100%; opacity: .5; }
 @keyframes rmProOut { to { opacity: 0; transform: translateX(40px); } }
 @keyframes rmRing { 0% { box-shadow: var(--shadow), 0 0 0 0 var(--acc-soft); } 40% { box-shadow: var(--shadow), 0 0 0 7px var(--acc-soft); } 100% { box-shadow: var(--shadow), 0 0 0 0 transparent; } }
 @media (prefers-reduced-motion: reduce) { #reminder.pop, #reminder.out { animation: none !important; } }
+
+/* copy / reply buttons of an answer sit right BELOW the answer text, in normal flow, so nothing can cover them */
+.msg.assistant .msg-actions { position: static; top: auto; right: auto; margin: 2px 0 0 -6px; }

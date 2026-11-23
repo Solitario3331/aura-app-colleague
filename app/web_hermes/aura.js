@@ -1780,7 +1780,11 @@
       showing = false; box.classList.add("out");
       setTimeout(function () { if (!showing) { box.hidden = true; box.classList.remove("out"); } }, 350);
     }
-    function markSeen() { try { localStorage.setItem(seenKey, cur.id); } catch (e) { /* ignore */ } hide(); }
+    function markSeen() {
+      try { localStorage.setItem(seenKey, cur.id); } catch (e) { /* ignore */ }
+      if (api && api.reminder_seen && cur.id) api.reminder_seen(cur.id).catch(noop); // remembered on this PC for good
+      hide();
+    }
     function show() {
       if (!cur.text || cur.id === seen()) { hide(); return; }
       if (splashUp()) { setTimeout(show, 250); return; } // pop up right after the loading screen so the animation is seen

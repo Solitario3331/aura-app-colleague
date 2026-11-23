@@ -163,6 +163,7 @@ AURA_RULES = " ".join((
     "Answer plain questions directly and briefly (no tool needed).",
     "If anyone asks who Amar or Arry are, or asks anything about them, reply ONLY with a short cute line",
     "saying they are two lovebirds making something cute together (add a heart), with no other details about them.",
+    "To PLAY music or a video on YouTube, use the play_youtube tool (it picks a video that really plays and checks the screen).",
     "To open a website (for example YouTube) when the user ASKS to open or browse one, use the open_website tool",
     "with the full https:// address; never open a browser with commands.",
     "Open a website or search the web ONLY when the user explicitly asks to browse, open a site or look something up online.",
@@ -177,6 +178,11 @@ if IN_AURA:
         "Open a web page (YouTube, Google, any website) or a local website file (full path to an .html file "
         "or its folder) inside the Aura app's own browser. ALWAYS use this to open a website. "
         "Never start a browser with run_powershell.", url=1))
+    TOOLS.append(_tool(
+        "play_youtube",
+        "Play music or a video on YouTube inside the Aura app. Give WHAT to play (a few words, for example 'chill lofi playlist') "
+        "or a YouTube link. It finds a video that really plays and checks the screen, and tries the next one if there is an error. "
+        "ALWAYS use this when the user wants to play, listen to or watch something on YouTube.", what=1))
 
 
 def log(msg: str) -> None:
@@ -232,6 +238,109 @@ def open_in_aura(url: str) -> str:
     except Exception as exc:
         log("open_in_aura failed: " + repr(exc))
     return "The Aura browser is not available right now, so nothing was opened (the normal browser is never used): " + shown
+
+
+# ---- YouTube, the smart way: only open videos that really play, then check the screen ----
+_YT_HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0 Safari/537.36",
+               "Accept-Language": "en-US,en;q=0.9", "Cookie": "CONSENT=YES+1; SOCS=CAI"}
+
+
+def _yt_id(text: str) -> str:
+    m = re.search(r"(?:youtube\.com/watch\?[^\s]*?v=|youtu\.be/)([A-Za-z0-9_-]{11})", text or "")
+    return m.group(1) if m else ""
+
+
+def _yt_status(vid: str) -> str:
+    """'OK' when YouTube says the video can be played, else its status (UNPLAYABLE, ERROR, LOGIN_REQUIRED...); '?' if unknown."""
+    try:
+        r = requests.get("https://www.youtube.com/watch?v=" + vid, headers=_YT_HEADERS, timeout=15)
+        m = re.search(r'"playabilityStatus":\{"status":"([A-Z_]+)"', r.text)
+        return m.group(1) if m else "?"
+    except Exception as exc:
+        log("yt status failed: " + repr(exc))
+        return "?"
+
+
+def _yt_search(query: str) -> list[str]:
+    try:
+        r = requests.get("https://www.youtube.com/results", params={"search_query": query}, headers=_YT_HEADERS, timeout=15)
+        ids: list[str] = []
+        for m in re.finditer(r'"videoId":"([A-Za-z0-9_-]{11})"', r.text):
+            if m.group(1) not in ids:
+                ids.append(m.group(1))
+        return ids[:10]
+    except Exception as exc:
+        log("yt search failed: " + repr(exc))
+        return []
+
+
+def _yt_title(vid: str) -> str:
+    try:
+        r = requests.get("https://www.youtube.com/oembed", params={"url": "https://www.youtube.com/watch?v=" + vid, "format": "json"}, timeout=10)
+        return str(r.json().get("title", ""))[:120] if r.status_code == 200 else ""
+    except Exception:
+        return ""
+
+
+def _screen_shows_error() -> bool | None:
+    """Look at the Aura window (picture) and ask the vision model whether the player shows an error. None = could not tell."""
+    try:
+        info = json.loads((ROOT / "logs" / "aura_ctl.json").read_text(encoding="utf-8"))
+        r = requests.get("http://127.0.0.1:%d/shot" % int(info["port"]), params={"token": info["token"]}, timeout=20)
+        if r.status_code != 200:
+            return None
+        img = base64.b64encode((ROOT / "logs" / "aura_shot.png").read_bytes()).decode("ascii")
+        body = {"model": MODEL, "stream": False, "think": False, "options": {"num_predict": 8, "temperature": 0},
+                "messages": [{"role": "user", "images": [img], "content":
+                              "Look at the video player inside this app window. Does it show an error such as 'Video unavailable', "
+                              "'This video is not available', a black screen with an error message, or a sign-in/consent wall instead of "
+                              "a video? Answer with exactly one word: YES or NO."}]}
+        a = requests.post(f"{OLLAMA_URL}/api/chat", json=body, timeout=90).json()
+        return "YES" in str(a.get("message", {}).get("content", "")).upper()
+    except Exception as exc:
+        log("screen check failed: " + repr(exc))
+        return None
+
+
+def play_youtube(what: str) -> str:
+    """Play something on YouTube inside Aura: a search, or a link. Skips videos YouTube says cannot play, and videos whose
+    player shows an error on screen, and tries the next result."""
+    what = (what or "").strip()
+    first = _yt_id(what)
+    q = what
+    m = re.search(r"search_query=([^&\s]+)", what)
+    if m:
+        from urllib.parse import unquote_plus
+        q = unquote_plus(m.group(1))
+    elif first:
+        q = ""
+    elif what.lower().startswith(("http://", "https://")):
+        mv = re.search(r"[?&]v=([^&\s]+)", what)  # a made-up link like watch?v=lofi: use its words as the search
+        q = mv.group(1).replace("-", " ").replace("_", " ") if mv else ""
+    cands = ([first] if first else []) + [v for v in (_yt_search(q) if q else []) if v != first]
+    if not cands:
+        return "I could not find any video for that on YouTube."
+    tried = []
+    for vid in cands[:8]:
+        st = _yt_status(vid)
+        if st not in ("OK", "?"):
+            tried.append(vid + ":" + st)
+            continue
+        url = "https://www.youtube.com/watch?v=" + vid + "&autoplay=1"
+        res = open_in_aura(url)
+        if "not available" in res and "Opened" not in res:
+            return res
+        time.sleep(8)  # let the page and player load, then look at the real screen
+        bad = _screen_shows_error()
+        log(f"play_youtube {vid}: status={st} screen_error={bad}")
+        if bad:
+            tried.append(vid + ":screen error")
+            continue
+        title = _yt_title(vid)
+        how = "I looked at the screen and it plays" if bad is False else "YouTube says it can play; I could not look at the screen"
+        return ("Playing" + (f" \"{title}\"" if title else "") + " on YouTube in Aura (" + how + "). "
+                "If there is no sound, click the video once: the browser may block autoplay until you click.")
+    return "I tried " + str(len(tried)) + " videos but none of them would play (" + ", ".join(tried)[:200] + "). Try a different search."
 
 
 # ---- tools ----
@@ -334,8 +443,13 @@ def _read_file(path: str, limit: int = 12000) -> str:
 
 def run_tool(name: str, args: dict) -> str:
     try:
+        if name == "play_youtube":
+            return play_youtube(str(args.get("what", "")))
         if name == "open_website":
-            return open_in_aura(str(args.get("url", "")))
+            u = str(args.get("url", ""))
+            if re.search(r"youtube\.com/watch|youtu\.be/", u, re.I):  # a YouTube video link: never open one that cannot play
+                return play_youtube(u)
+            return open_in_aura(u)
         if name == "run_powershell":
             return _run_powershell(str(args.get("command", "")))
         if name == "read_file":
@@ -514,6 +628,18 @@ if __name__ == "__main__":
         if sys.argv[i] == "--image" and i + 1 < len(sys.argv):
             imgs.append(sys.argv[i + 1])
             i += 2
+        elif sys.argv[i] == "--see-aura":  # a picture of the Aura window (and its preview pane), taken right now
+            try:
+                info = json.loads((ROOT / "logs" / "aura_ctl.json").read_text(encoding="utf-8"))
+                r = requests.get("http://127.0.0.1:%d/shot" % int(info["port"]), params={"token": info["token"]}, timeout=20)
+                if r.status_code != 200:
+                    sys.exit("I could not take a picture of the Aura window right now.")
+                imgs.append(str(ROOT / "logs" / "aura_shot.png"))
+            except SystemExit:
+                raise
+            except Exception as exc:
+                sys.exit("I could not reach the Aura window: " + repr(exc))
+            i += 1
         else:
             words.append(sys.argv[i])
             i += 1

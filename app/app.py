@@ -112,6 +112,10 @@ AURA_PERSONA = " ".join((
     "When you need the user to choose between options, do NOT use any question tool. Write the question, then",
     "a block exactly like:\n```choices\nOption one\nOption two\nOption three\n```\nOne option per line, 2 to 5 options;",
     "the user taps one and it comes back as their next message.",
+    "You CAN look at your own window, including the preview pane and whether a video is playing: run do.bat with the question and the extra option --see-aura, "
+    "for example do.bat \"What is shown in the Aura window? Is a video playing?\" --see-aura. Do this to check what you opened instead of saying you cannot see it.",
+    "To PLAY something on YouTube run do.bat \"play <what> on YouTube\": it picks a video that really plays, opens it in Aura and checks the screen itself, "
+    "and tries another result if one shows an error. Never open a YouTube link yourself without that. If you open anything else and it matters that it worked, check with --see-aura.",
     "To open a website, use do.bat (it opens the site inside Aura); never start a browser yourself. A website you built is ALREADY shown in the Aura preview pane: never open it in the normal browser, never run start/Start-Process/explorer on it, and do not say it was opened in the browser unless the user asked.",
     "Open a website ONLY when the user asks to browse, open a site or look something up online;",
     "for 'show me', 'give me' or any request for information, a recipe or an answer, write the answer in the chat.",
@@ -547,6 +551,80 @@ class _PreviewHandler(http.server.SimpleHTTPRequestHandler):
         super().end_headers()
 
 
+def _capture_aura_window(dest: Path) -> bool:
+    """Save a picture of this Aura window (everything in it, including the preview pane) as a PNG. Windows only."""
+    import struct
+    import zlib
+    u, g = ctypes.windll.user32, ctypes.windll.gdi32
+    try:
+        u.SetThreadDpiAwarenessContext(ctypes.c_void_p(-4))  # real pixels, not scaled ones (else the picture is cropped)
+    except Exception:
+        pass
+    found = []
+    pid = os.getpid()
+
+    @ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
+    def each(hwnd, _):
+        owner = ctypes.c_ulong(0)
+        u.GetWindowThreadProcessId(hwnd, ctypes.byref(owner))
+        buf = ctypes.create_unicode_buffer(64)
+        u.GetWindowTextW(hwnd, buf, 64)
+        if owner.value == pid and buf.value == "Aura" and u.IsWindowVisible(hwnd):
+            found.append(hwnd)
+        return True
+
+    u.EnumWindows(each, 0)
+    if not found:
+        return False
+    hwnd = found[0]
+
+    class RECT(ctypes.Structure):
+        _fields_ = [("l", ctypes.c_long), ("t", ctypes.c_long), ("r", ctypes.c_long), ("b", ctypes.c_long)]
+
+    rc = RECT()
+    u.GetWindowRect(hwnd, ctypes.byref(rc))
+    w, h = rc.r - rc.l, rc.b - rc.t
+    if w < 50 or h < 50:
+        return False
+    sdc = u.GetDC(None)
+    mdc = g.CreateCompatibleDC(sdc)
+    bmp = g.CreateCompatibleBitmap(sdc, w, h)
+    old = g.SelectObject(mdc, bmp)
+    try:
+        u.PrintWindow(hwnd, mdc, 2)  # 2 = also draw the web content
+
+        class BIH(ctypes.Structure):
+            _fields_ = [("size", ctypes.c_uint32), ("w", ctypes.c_int32), ("h", ctypes.c_int32), ("planes", ctypes.c_uint16),
+                        ("bits", ctypes.c_uint16), ("comp", ctypes.c_uint32), ("img", ctypes.c_uint32), ("xp", ctypes.c_int32),
+                        ("yp", ctypes.c_int32), ("used", ctypes.c_uint32), ("imp", ctypes.c_uint32)]
+
+        bi = BIH(ctypes.sizeof(BIH), w, -h, 1, 32, 0, 0, 0, 0, 0, 0)  # negative height = top-down rows
+        raw = ctypes.create_string_buffer(w * h * 4)
+        g.GetDIBits(mdc, bmp, 0, h, raw, ctypes.byref(bi), 0)
+    finally:
+        g.SelectObject(mdc, old)
+        g.DeleteObject(bmp)
+        g.DeleteDC(mdc)
+        u.ReleaseDC(None, sdc)
+    data = raw.raw
+    rows = []
+    for y in range(h):  # BGRA -> RGB, one PNG row at a time
+        row = data[y * w * 4:(y + 1) * w * 4]
+        rgb = bytearray(w * 3)
+        rgb[0::3], rgb[1::3], rgb[2::3] = row[2::4], row[1::4], row[0::4]
+        rows.append(b"\x00" + bytes(rgb))
+
+    def chunk(tag, body):
+        c = struct.pack(">I", len(body)) + tag + body
+        return c + struct.pack(">I", zlib.crc32(tag + body) & 0xFFFFFFFF)
+
+    png = (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0))
+           + chunk(b"IDAT", zlib.compress(b"".join(rows), 6)) + chunk(b"IEND", b""))
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_bytes(png)
+    return True
+
+
 def _start_control(api_obj):
     """Tiny local door so helper programs (like the local assistant) can ask the app to open a web page.
     Needs a secret token, which is written to logs/aura_ctl.json for them."""
@@ -564,7 +642,10 @@ def _start_control(api_obj):
                 q = urllib.parse.parse_qs(u.query)
                 url = q.get("url", [""])[0].strip()
                 local = q.get("path", [""])[0].strip()
-                if u.path == "/open" and secrets.compare_digest(q.get("token", [""])[0], token):
+                if u.path == "/shot" and secrets.compare_digest(q.get("token", [""])[0], token):
+                    shot = ROOT / "logs" / "aura_shot.png"
+                    code = 200 if _capture_aura_window(shot) else 404
+                elif u.path == "/open" and secrets.compare_digest(q.get("token", [""])[0], token):
                     if url.lower().startswith(("http://", "https://")):
                         api_obj._queue_open(url)
                         code = 200
@@ -1384,11 +1465,35 @@ class Api:
             return {"status": "Could not check for updates right now. Please try again later.", "newer": False,
                     "state": "error"}
 
+    def _seen_file(self) -> Path:
+        return ROOT / "logs" / ("reminder_seen_" + ("hermes" if _theme() == "hermes" else "cyberpunk") + ".txt")
+
+    def reminder_seen(self, rid) -> dict:
+        """She has read this reminder: remember it on this PC (a file, because the page's own storage is wiped on every start)."""
+        try:
+            f = self._seen_file()
+            f.parent.mkdir(parents=True, exist_ok=True)
+            f.write_text(str(rid)[:40], encoding="utf-8")
+            return {"ok": True}
+        except Exception as exc:
+            _log("reminder_seen failed: " + repr(exc))
+            return {"ok": False}
+
     def get_reminder(self) -> dict:
+        """The newest reminder meant for this look, unless it was already read on this PC."""
+        res = self._get_reminder_raw()
+        try:
+            if res.get("id") and res["id"] == self._seen_file().read_text(encoding="utf-8").strip():
+                return {"id": "", "text": ""}
+        except OSError:
+            pass
+        return res
+
+    def _get_reminder_raw(self) -> dict:
         """A short note from the person who looks after this Aura (reminder.json in the update repo). Never raises."""
         try:
             cfg = _update_config()
-            repo = cfg.get("repo", "")
+            repo = os.environ.get("AURA_REMINDER_REPO", "").strip() or cfg.get("repo", "")  # a launcher may read reminders from another repo (updates stay as they are)
             if not repo or "OWNER" in repo:
                 return {"id": "", "text": ""}
             import requests

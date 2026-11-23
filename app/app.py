@@ -2333,7 +2333,7 @@ def _set_window_icon() -> None:
     """Give the window and taskbar the Aura icon and drop the native title bar (Windows only)."""
     try:
         u = _user32()
-        icon = ROOT / "app" / ("aura_pro.ico" if _theme() == "hermes" else "aura_icon4.ico")  # each look has its own icon
+        icon = ROOT / "app" / ("aura_pro2.ico" if _theme() == "hermes" else "aura_icon4.ico")  # each look has its own icon
         custom = os.environ.get("AURA_ICON", "")  # a launcher can name its own icon file (inside the app folder)
         if custom and (ROOT / "app" / Path(custom).name).exists():
             icon = ROOT / "app" / Path(custom).name

@@ -8,6 +8,10 @@ $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $py = Join-Path $root '.venv\Scripts\pythonw.exe'
 $app = Join-Path $root 'app\app.py'
 $ico = Join-Path $root 'app\aura_icon4.ico'
+# the professional look (theme.txt says hermes) has its own icon
+$theme = ''
+try { $theme = (Get-Content (Join-Path $root 'theme.txt') -ErrorAction Stop | Select-Object -First 1).Trim() } catch { }
+if ($theme -eq 'hermes') { $ico = Join-Path $root 'app\aura_pro.ico' }
 $appId = 'Aura.App'
 if (-not (Test-Path $py)) { exit 1 }
 

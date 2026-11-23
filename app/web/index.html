@@ -14,7 +14,7 @@
   <!-- Left: chats -->
   <aside id="sidebar" aria-label="Chats">
     <div class="side-head">
-      <div class="brand"><div class="brand-text"><strong>AURA</strong></div></div>
+      <div class="brand"><div class="brand-text"><strong>Aura</strong><button id="appMenuBtn" type="button" title="Menu" aria-label="Menu" aria-haspopup="menu" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="l1" d="M4 8h16"/><path class="l2" d="M4 16h10"/></svg></button></div></div>
       <div class="side-tools">
         <button id="newChat" type="button" title="New chat" aria-label="New chat"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
         <button id="searchChat" type="button" title="Search chats (Ctrl+K)" aria-label="Search chats"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4 4"/></svg></button>
@@ -34,6 +34,7 @@
       <button id="sbToggle" type="button" title="Show or hide chats (Ctrl+B)" aria-label="Show or hide chats"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4zM9 5v14"/></svg></button>
       <span id="tsDrag" class="ts-drag"></span>
     </div>
+    <div id="reminder" role="status" aria-live="polite" hidden><span class="rm-text"></span><button class="rm-x" type="button" title="Dismiss" aria-label="Dismiss the reminder"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7"/></svg></button></div>
     <div id="messages" role="log" aria-live="polite" aria-label="Conversation"></div>
     <div id="composerWrap">
       <div id="pillHint" aria-live="polite"></div>

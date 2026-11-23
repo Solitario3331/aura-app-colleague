@@ -1384,6 +1384,30 @@ class Api:
             return {"status": "Could not check for updates right now. Please try again later.", "newer": False,
                     "state": "error"}
 
+    def get_reminder(self) -> dict:
+        """A short note from the person who looks after this Aura (reminder.json in the update repo). Never raises."""
+        try:
+            cfg = _update_config()
+            repo = cfg.get("repo", "")
+            if not repo or "OWNER" in repo:
+                return {"id": "", "text": ""}
+            import requests
+            branch = cfg.get("branch", "main")
+            ref = _latest_commit(repo, branch) or branch  # an exact commit is never served from an old cache
+            url = "https://raw.githubusercontent.com/{}/{}/reminder.json?t={}".format(repo, ref, int(time.time()))
+            hdrs = {"Cache-Control": "no-cache"}
+            if cfg.get("token"):
+                hdrs["Authorization"] = "token " + cfg["token"]
+            resp = requests.get(url, headers=hdrs, timeout=10)
+            if resp.status_code != 200:
+                return {"id": "", "text": ""}
+            data = json.loads(resp.content.decode("utf-8-sig"))
+            text = str(data.get("text", "")).strip()[:400]
+            return {"id": str(data.get("id", ""))[:40], "text": text}
+        except Exception as exc:
+            _log("get_reminder failed: " + repr(exc))
+            return {"id": "", "text": ""}
+
     def update_download(self) -> dict:
         """Step 1 of an update: fetch the new version (kept in memory until update_install)."""
         if not self._upd_lock.acquire(blocking=False):
@@ -2119,7 +2143,7 @@ def _set_window_icon() -> None:
     """Give the window and taskbar the Aura icon and drop the native title bar (Windows only)."""
     try:
         u = _user32()
-        icon = ROOT / "app" / "aura_icon4.ico"
+        icon = ROOT / "app" / ("aura_pro.ico" if _theme() == "hermes" else "aura_icon4.ico")  # each look has its own icon
         if not icon.exists():
             icon = ROOT / "app" / "icon.ico"
         hwnd = _wait_for_window("Aura", 240, 0.25)  # a slow first start can take a while
@@ -2260,10 +2284,38 @@ def _ensure_shortcut() -> None:
         _log("shortcut failed: " + repr(exc))
 
 
+_instance_lock = None
+
+
+def _already_running() -> bool:
+    """One Aura per install folder: if it is open already, bring that window to the front and say so."""
+    global _instance_lock
+    try:
+        import hashlib
+        k = ctypes.windll.kernel32
+        k.CreateMutexW.restype = ctypes.c_void_p
+        name = "Local\\AuraApp_" +hashlib.md5(str(ROOT).lower().encode("utf-8")).hexdigest()[:16]
+        _instance_lock = k.CreateMutexW(None, False, name)
+        if ctypes.GetLastError() != 183:  # 183 = the mutex existed already
+            return False
+        u = ctypes.windll.user32
+        hwnd = u.FindWindowW(None, "Aura")
+        if hwnd:
+            if u.IsIconic(hwnd):
+                u.ShowWindow(hwnd, 9)  # restore a minimized window
+            u.SetForegroundWindow(hwnd)
+        return True
+    except Exception as exc:
+        _log("single-instance check failed: " + repr(exc))
+        return False
+
+
 def main() -> None:
     import webview
 
     updated = _wait_for_old_aura(sys.argv[1:])  # after an update: let the old window close first
+    if _already_running():
+        return
     try:
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(APP_ID)  # before any window exists
     except Exception:

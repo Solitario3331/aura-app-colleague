@@ -18,7 +18,7 @@
 
   <!-- Far-left icon rail (buttons forward to the real controls) -->
   <nav id="rail" aria-label="App">
-    <div class="rail-top" id="railLogo" aria-hidden="true"></div>
+    <div class="rail-top" id="railLogo"><button id="appMenuBtn" type="button" title="Menu" aria-label="Menu" aria-haspopup="menu" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="l1" d="M4 8h16"/><path class="l2" d="M4 16h10"/></svg></button></div>
     <button id="railChat" class="rail-btn on" type="button" title="Chats (Ctrl+B)" aria-label="Show or hide chats"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5h16v10.5H9.5L5 20v-4H4z"/></svg></button>
     <button id="railNew" class="rail-btn" type="button" title="New chat" aria-label="New chat"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4.5v15M4.5 12h15"/></svg></button>
     <button id="railBrowser" class="rail-btn" type="button" title="Browser" aria-label="Show or hide the browser"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c3.2 3.4 3.2 13.6 0 17M12 3.5c-3.2 3.4-3.2 13.6 0 17"/></svg></button>
@@ -50,6 +50,7 @@
       <span id="tsDrag" class="ts-drag"></span>
       <span id="chatTitle" class="ts-title" aria-hidden="true"></span>
     </div>
+    <div id="reminder" role="status" aria-live="polite" hidden><span class="rm-text"></span><button class="rm-x" type="button" title="Dismiss" aria-label="Dismiss the reminder"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7"/></svg></button></div>
     <div id="messages" role="log" aria-live="polite" aria-label="Conversation"></div>
     <!-- Front page: shown by CSS only while #messages is empty -->
     <div id="welcome">

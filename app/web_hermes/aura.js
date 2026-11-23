@@ -1767,6 +1767,71 @@
   $("sbToggle").addEventListener("click", function () { setSidebar(sbHidden); });
   $("tsDrag").addEventListener("mousedown", dragWin);
   $("tsDrag").addEventListener("dblclick", toggleMax);
+
+  /* ---- live reminder on the front page (read from the update repo, so no new version is needed) ---- */
+  (function () {
+    var box = $("reminder"); if (!box) return;
+    var txt = box.querySelector(".rm-text"), seenKey = "auraReminderSeen", cur = { id: "", text: "" }, last = 0;
+    function seen() { try { return localStorage.getItem(seenKey) || ""; } catch (e) { return ""; } }
+    function render() { var on = !!(cur.text && cur.id !== seen()); box.hidden = !on; if (on) txt.textContent = cur.text; }
+    box.querySelector(".rm-x").addEventListener("click", function () {
+      try { localStorage.setItem(seenKey, cur.id); } catch (e) { /* ignore */ }
+      render();
+    });
+    function load() {
+      if (!api || !api.get_reminder) return;
+      last = Date.now();
+      api.get_reminder().then(function (r) {
+        if (!r) return;
+        cur = { id: String(r.id || ""), text: String(r.text || "") };
+        render();
+      }).catch(noop);
+    }
+    setInterval(function () { if (api && Date.now() - last > 300000) load(); }, 15000); // first read as soon as the app is ready, then every 5 minutes
+    window.addEventListener("focus", function () { if (Date.now() - last > 60000) load(); });
+  })();
+
+  /* ---- app menu (top-left): the same things a File / Help menu would hold ---- */
+  (function () {
+    var btn = $("appMenuBtn"); if (!btn) return;
+    var menu = document.createElement("div"); menu.id = "appMenu"; menu.setAttribute("role", "menu"); menu.hidden = true;
+    var items = [
+      ["New chat", "", function () { $("newChat").click(); }],
+      ["Search chats", "Ctrl+K", function () { $("searchChat").click(); }],
+      ["-"],
+      ["Save this chat as a file", "", function () {
+        if (!api || !currentId) { toast("Open a chat first."); return; }
+        api.export_chat(currentId).then(function (r) { toast((r && r.status) || "Could not save the chat."); }).catch(function () { toast("Could not save the chat."); });
+      }],
+      ["Open chats folder", "", function () { if (api) api.open_chats_folder().then(function (r) { if (r && r.status !== "Opened.") toast(r.status); }).catch(noop); }],
+      ["-"],
+      ["Settings", "", function () { $("settingsBtn").click(); }],
+      ["Help and commands", "/help", function () { helpCard(); }],
+      ["-"],
+      ["Exit Aura", "", function () { if (api) api.win_close().catch(noop); }]
+    ];
+    items.forEach(function (it) {
+      if (it[0] === "-") { var hr = document.createElement("div"); hr.className = "am-sep"; menu.appendChild(hr); return; }
+      var b = document.createElement("button"); b.type = "button"; b.setAttribute("role", "menuitem");
+      var l = document.createElement("span"); l.textContent = it[0]; b.appendChild(l);
+      if (it[1]) { var k = document.createElement("kbd"); k.textContent = it[1]; b.appendChild(k); }
+      b.addEventListener("click", function () { close(); it[2](); });
+      menu.appendChild(b);
+    });
+    document.body.appendChild(menu);
+    function close() { menu.hidden = true; btn.setAttribute("aria-expanded", "false"); }
+    function open() {
+      var r = btn.getBoundingClientRect();
+      menu.style.left = Math.max(8, r.left) + "px"; menu.style.top = (r.bottom + 6) + "px";
+      menu.hidden = false; btn.setAttribute("aria-expanded", "true");
+    }
+    btn.addEventListener("mousedown", function (e) { e.stopPropagation(); }); // a click here must not drag the window
+    btn.addEventListener("click", function (e) { e.stopPropagation(); menu.hidden ? open() : close(); });
+    document.addEventListener("mousedown", function (e) { if (!menu.hidden && !menu.contains(e.target) && e.target !== btn) close(); });
+    document.addEventListener("keydown", function (e) { if (e.key === "Escape" && !menu.hidden) { close(); e.stopPropagation(); } }, true);
+    window.addEventListener("blur", close);
+  })();
+  $("splash").addEventListener("mousedown", dragWin); // the loading screen covers the title bar: it can still move the window
   document.querySelector("#sidebar .brand").addEventListener("mousedown", dragWin);
   $("wcMin").addEventListener("click", function () { if (api) api.win_min().catch(noop); });
   $("wcMax").addEventListener("click", toggleMax);

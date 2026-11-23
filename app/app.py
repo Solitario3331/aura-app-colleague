@@ -114,6 +114,8 @@ AURA_PERSONA = " ".join((
     "the user taps one and it comes back as their next message.",
     "You CAN look at your own window, including the preview pane and whether a video is playing: run do.bat with the question and the extra option --see-aura, "
     "for example do.bat \"What is shown in the Aura window? Is a video playing?\" --see-aura. Do this to check what you opened instead of saying you cannot see it.",
+    "To play, pause, resume or mute the video in the Aura browser, run do.bat \"pause the video\" (or play / resume / mute). It really controls the player and reports the true state. "
+    "Never tell the user you paused or played something unless that result says so.",
     "To PLAY something on YouTube run do.bat \"play <what> on YouTube\": it picks a video that really plays, opens it in Aura and checks the screen itself, "
     "and tries another result if one shows an error. Never open a YouTube link yourself without that. If you open anything else and it matters that it worked, check with --see-aura.",
     "To open a website, use do.bat (it opens the site inside Aura); never start a browser yourself. A website you built is ALREADY shown in the Aura preview pane: never open it in the normal browser, never run start/Start-Process/explorer on it, and do not say it was opened in the browser unless the user asked.",
@@ -642,7 +644,18 @@ def _start_control(api_obj):
                 q = urllib.parse.parse_qs(u.query)
                 url = q.get("url", [""])[0].strip()
                 local = q.get("path", [""])[0].strip()
-                if u.path == "/shot" and secrets.compare_digest(q.get("token", [""])[0], token):
+                if u.path == "/media" and secrets.compare_digest(q.get("token", [""])[0], token):
+                    act = q.get("action", ["status"])[0]
+                    if act in ("status", "play", "pause", "toggle", "mute", "unmute"):
+                        body = json.dumps(api_obj._media(act)).encode("utf-8")
+                        self.send_response(200)
+                        self.send_header("Content-Type", "application/json")
+                        self.send_header("Content-Length", str(len(body)))
+                        self.end_headers()
+                        self.wfile.write(body)
+                        return
+                    code = 404
+                elif u.path == "/shot" and secrets.compare_digest(q.get("token", [""])[0], token):
                     shot = ROOT / "logs" / "aura_shot.png"
                     code = 200 if _capture_aura_window(shot) else 404
                 elif u.path == "/open" and secrets.compare_digest(q.get("token", [""])[0], token):
@@ -1058,6 +1071,66 @@ class Api:
         except Exception as exc:
             _log("open_url failed: " + repr(exc))
             return {"status": "Could not open the browser."}
+
+    def _media(self, action: str) -> dict:
+        """Control the video in the pane: the page handles the embedded YouTube player, the app handles a real browser view."""
+        win = getattr(self, "_main_win", None)
+        if win is None:
+            return self._page_media(action)
+        try:
+            win.evaluate_js("window.__mres=null;window.auraMediaStart&&window.auraMediaStart(%s)" % json.dumps(action))
+            end = time.time() + 9
+            d = None
+            while time.time() < end:
+                r = win.evaluate_js("window.__mres")
+                if r:
+                    d = json.loads(r)
+                    break
+                time.sleep(0.25)
+            if d is None:
+                return {"ok": False, "status": "The page did not answer."}
+            if d.get("use") == "overlay":
+                return self._page_media(action)
+            return d
+        except Exception as exc:
+            _log("media failed: " + repr(exc))
+            return {"ok": False, "status": "I could not reach the video."}
+
+    def _page_media(self, action: str) -> dict:
+        """Play / pause / mute the video of the page shown in the Aura browser view, then read back what it REALLY does now."""
+        win = self._ov_win
+        if win is None:
+            return {"ok": False, "status": "No page is open in the Aura browser."}
+        def js_for(a):
+            return (
+                "(function(action){var v=document.querySelector('video');"
+                "if(!v)return JSON.stringify({ok:false,status:'There is no video on this page.'});"
+                "if(action==='pause'){v.pause();}"
+                "else if(action==='play'){var p=v.play();if(p&&p.catch)p.catch(function(){});}"
+                "else if(action==='toggle'){if(v.paused){var q=v.play();if(q&&q.catch)q.catch(function(){});}else{v.pause();}}"
+                "else if(action==='mute'){v.muted=true;}else if(action==='unmute'){v.muted=false;}"
+                "else if(action==='click'){var b=document.querySelector('.ytp-large-play-button,.ytp-play-button');if(b)b.click();}"
+                "return JSON.stringify({ok:true,paused:v.paused,muted:v.muted,time:Math.round(v.currentTime),"
+                "duration:isFinite(v.duration)?Math.round(v.duration):null,title:document.title});})(%s)" % json.dumps(a)
+            )
+
+        def run(a):
+            raw = win.evaluate_js(js_for(a))
+            return json.loads(raw) if raw else {"ok": False, "status": "The page did not answer."}
+
+        try:
+            res = run(action)
+            if action in ("play", "toggle", "pause", "mute", "unmute", "click"):
+                time.sleep(0.9)  # let the player react, then look again
+                res = run("status")
+                if action == "play" and res.get("ok") and res.get("paused"):  # the site still blocks it: press its own play button
+                    run("click")
+                    time.sleep(1.2)
+                    res = run("status")
+            return res
+        except Exception as exc:
+            _log("page media failed: " + repr(exc))
+            return {"ok": False, "status": "I could not reach the video."}
 
     def open_browser_window(self, url) -> dict:
         """Open a web address in its own Aura browser window (works with every site)."""
@@ -2434,6 +2507,7 @@ def main() -> None:
     import webview
 
     updated = _wait_for_old_aura(sys.argv[1:])  # after an update: let the old window close first
+    os.environ.setdefault("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", "--autoplay-policy=no-user-gesture-required")  # videos may start without a click
     if _already_running():
         return
     try:
@@ -2459,7 +2533,7 @@ def main() -> None:
     except Exception as exc:
         _log("control server failed: " + repr(exc))
 
-    webview.create_window(
+    api_obj._main_win = webview.create_window(
         "Aura",
         url=str(ROOT / "app" / ("web_hermes" if _theme() == "hermes" else "web") / "index.html"),
         js_api=api_obj,

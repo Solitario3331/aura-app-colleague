@@ -163,6 +163,7 @@ AURA_RULES = " ".join((
     "Answer plain questions directly and briefly (no tool needed).",
     "If anyone asks who Amar or Arry are, or asks anything about them, reply ONLY with a short cute line",
     "saying they are two lovebirds making something cute together (add a heart), with no other details about them.",
+    "To pause, resume or mute the video in the Aura browser use the control_media tool and report only what its result says.",
     "To PLAY music or a video on YouTube, use the play_youtube tool (it picks a video that really plays and checks the screen).",
     "To open a website (for example YouTube) when the user ASKS to open or browse one, use the open_website tool",
     "with the full https:// address; never open a browser with commands.",
@@ -178,6 +179,11 @@ if IN_AURA:
         "Open a web page (YouTube, Google, any website) or a local website file (full path to an .html file "
         "or its folder) inside the Aura app's own browser. ALWAYS use this to open a website. "
         "Never start a browser with run_powershell.", url=1))
+    TOOLS.append(_tool(
+        "control_media",
+        "Control the video or music playing in the Aura browser: action is play, pause, mute, unmute or status. "
+        "It really operates the player and returns its true state. ALWAYS use it for pause / resume / play / mute requests, "
+        "and tell the user exactly what its result says.", action=1))
     TOOLS.append(_tool(
         "play_youtube",
         "Play music or a video on YouTube inside the Aura app. Give WHAT to play (a few words, for example 'chill lofi playlist') "
@@ -336,11 +342,38 @@ def play_youtube(what: str) -> str:
         if bad:
             tried.append(vid + ":screen error")
             continue
+        mres = control_media("play")  # start it if the site waited for a click, and read the real state
+        really = "is now playing" in mres
         title = _yt_title(vid)
+        if not really:
+            return ("Opened" + (" \"" + title + "\"" if title else "") + " in Aura but it is NOT playing yet (" + mres + "). "
+                    "Tell the user to click the video once.")
         how = "I looked at the screen and it plays" if bad is False else "YouTube says it can play; I could not look at the screen"
         return ("Playing" + (f" \"{title}\"" if title else "") + " on YouTube in Aura (" + how + "). "
                 "If there is no sound, click the video once: the browser may block autoplay until you click.")
     return "I tried " + str(len(tried)) + " videos but none of them would play (" + ", ".join(tried)[:200] + "). Try a different search."
+
+
+def control_media(action: str) -> str:
+    """Play, pause, mute... the video shown in Aura, and report what the player REALLY does afterwards."""
+    action = (action or "").strip().lower()
+    action = {"resume": "play", "start": "play", "stop": "pause", "unpause": "play", "silence": "mute"}.get(action, action)
+    if action not in ("status", "play", "pause", "toggle", "mute", "unmute"):
+        return "Unknown action. Use play, pause, mute, unmute or status."
+    try:
+        info = json.loads((ROOT / "logs" / "aura_ctl.json").read_text(encoding="utf-8"))
+        r = requests.get("http://127.0.0.1:%d/media" % int(info["port"]), params={"token": info["token"], "action": action}, timeout=30)
+        d = r.json()
+    except Exception as exc:
+        return "I could not reach the video in Aura: " + repr(exc)
+    if not d.get("ok"):
+        return d.get("status", "I could not control the video.")
+    state = "paused" if d.get("paused") else "playing"
+    out = f"The video is now {state}" + (", muted" if d.get("muted") else "") + f" (at {d.get('time', 0)} s)."
+    want = {"play": "playing", "pause": "paused"}.get(action)
+    if want and want != state:
+        out += f" That is NOT what was asked ({action}): tell the user it did not work."
+    return out
 
 
 # ---- tools ----
@@ -443,6 +476,8 @@ def _read_file(path: str, limit: int = 12000) -> str:
 
 def run_tool(name: str, args: dict) -> str:
     try:
+        if name == "control_media":
+            return control_media(str(args.get("action", "")))
         if name == "play_youtube":
             return play_youtube(str(args.get("what", "")))
         if name == "open_website":

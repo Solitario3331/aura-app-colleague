@@ -1435,7 +1435,7 @@
     var m = u.match(/^https?:\/\/(?:www\.|m\.)?youtube\.com\/watch\?(?:[^#]*&)?v=([\w-]{6,20})/i)
          || u.match(/^https?:\/\/youtu\.be\/([\w-]{6,20})/i)
          || u.match(/^https?:\/\/(?:www\.|m\.)?youtube\.com\/(?:shorts|live)\/([\w-]{6,20})/i);
-    return m ? "https://www.youtube.com/embed/" + m[1] + "?autoplay=1" : u;
+    return m ? "https://www.youtube.com/embed/" + m[1] + "?autoplay=1&enablejsapi=1" : u;
   }
   function paneOpen() { return pane.classList.contains("open"); }
   function setPaneOpen(on) {
@@ -1462,6 +1462,48 @@
     frame.src = "about:blank"; // forces a real reload, even for the same address
     setTimeout(function () { frame.src = u; }, 30);
   }
+
+  /* ---- video control: Aura can play / pause / mute the YouTube video in the pane and read its REAL state ---- */
+  var ytInfo = { paused: null, muted: false, time: 0, seen: 0 };
+  frame.setAttribute("allow", "autoplay; encrypted-media; fullscreen; picture-in-picture");
+  function ytPost(obj) { try { frame.contentWindow.postMessage(JSON.stringify(obj), "*"); } catch (e) { /* not loaded yet */ } }
+  function ytListen() { ytPost({ event: "listening", id: 1, channel: "widget" }); }
+  window.addEventListener("message", function (e) {
+    if (!frame || e.source !== frame.contentWindow) return;
+    var d = e.data;
+    if (typeof d === "string") { try { d = JSON.parse(d); } catch (x) { return; } }
+    if (!d || typeof d !== "object") return;
+    if (d.event === "onReady") ytListen();
+    var i = d.info;
+    if (d.event === "infoDelivery" && i) {
+      if (typeof i.playerState === "number") ytInfo.paused = (i.playerState !== 1 && i.playerState !== 3); // 1 = playing, 3 = buffering
+      if (typeof i.muted === "boolean") ytInfo.muted = i.muted;
+      if (typeof i.currentTime === "number") ytInfo.time = Math.round(i.currentTime);
+      ytInfo.seen = Date.now();
+    }
+  });
+  frame.addEventListener("load", function () {
+    ytInfo = { paused: null, muted: false, time: 0, seen: 0 };
+    var n = 0, t = setInterval(function () { ytListen(); if (++n > 16 || ytInfo.seen) clearInterval(t); }, 500);
+  });
+  /* The app asks this (through the control door); the answer is left in window.__mres. */
+  window.auraMediaStart = function (action) {
+    window.__mres = null;
+    function done(o) { window.__mres = JSON.stringify(o); }
+    if (typeof ovOn !== "undefined" && ovOn) { done({ use: "overlay" }); return; } // a real browser view: the app handles that one
+    if (!frame || frame.hidden || !/youtube\.com\/embed\//.test(frame.src || "")) { done({ ok: false, status: "There is no video in the Aura browser." }); return; }
+    var cmd = { play: "playVideo", pause: "pauseVideo", mute: "mute", unmute: "unMute" }[action];
+    if (action === "toggle") cmd = ytInfo.paused ? "playVideo" : "pauseVideo";
+    ytListen();
+    if (cmd) ytPost({ event: "command", func: cmd, args: [] });
+    setTimeout(function () {
+      ytListen();
+      setTimeout(function () {
+        if (!ytInfo.seen || ytInfo.paused === null) { done({ ok: false, status: "The video player did not answer. It may still be loading." }); return; }
+        done({ ok: true, paused: !!ytInfo.paused, muted: !!ytInfo.muted, time: ytInfo.time });
+      }, 700);
+    }, 900);
+  };
 
   /* Sites that refuse a normal frame (YouTube, Google...) get a real browser view fastened exactly over the pane. */
   var ovOn = false, ovSuspended = false, ovTimer = 0;

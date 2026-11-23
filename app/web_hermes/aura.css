@@ -1056,18 +1056,20 @@ body.calm .upd-bar i { width: 100%; opacity: .5; }
 #sidebar .foot #settingsBtn { display: none; } /* Settings lives in the menu now */
 #railSettings { display: none; }
 
-/* live reminder (front page only): clean card */
+/* live reminder: clean notification card (top right, any page) */
 #reminder { display: none; }
-#main.is-empty #reminder:not([hidden]) { display: block; position: absolute; top: calc(var(--strip) + 10px); left: 50%; transform: translateX(-50%); z-index: 5;
-  width: max-content; max-width: min(520px, calc(100% - 48px)); padding: 28px 40px 13px 18px; border: 1px solid var(--line2); border-radius: 12px;
-  background: var(--overlay); color: var(--hi); font-size: 14px; line-height: 1.5; box-shadow: var(--shadow-md);
-  animation: rmPro .5s cubic-bezier(.2,.8,.2,1) both, rmRing 1.4s ease-out .1s 1 both; overflow: hidden; }
-#reminder::before { content: "Reminder"; position: absolute; top: 9px; left: 18px; display: flex; align-items: center; gap: 7px; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--acc-text); }
+#reminder:not([hidden]) { display: block; position: fixed; top: calc(var(--strip) + 10px); right: 18px; z-index: 8800; width: 330px; max-width: calc(100vw - 36px);
+  padding: 28px 40px 14px 18px; border: 1px solid var(--line2); border-radius: 12px; overflow: hidden;
+  background: var(--overlay); color: var(--hi); font-size: 14px; line-height: 1.5; box-shadow: var(--shadow); }
+#reminder.pop { animation: rmPro .55s cubic-bezier(.2,.9,.25,1.1) both, rmRing 1.4s ease-out .1s 1 both; }
+#reminder.out { animation: rmProOut .3s ease-in both; }
+#reminder::before { content: "Reminder"; position: absolute; top: 9px; left: 18px; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--acc-text); }
 #reminder::after { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--acc); }
 #reminder .rm-text { min-width: 0; overflow-wrap: anywhere; }
 #reminder .rm-x { position: absolute; top: 7px; right: 7px; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 6px; color: var(--dim); }
 #reminder .rm-x:hover { color: var(--hi); background: var(--hover); }
 #reminder .rm-x svg { width: 11px; height: 11px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; }
-@keyframes rmPro { from { opacity: 0; transform: translate(-50%, -12px) scale(.97); filter: blur(4px); } to { opacity: 1; transform: translate(-50%, 0) scale(1); filter: none; } }
-@keyframes rmRing { 0% { box-shadow: var(--shadow-md), 0 0 0 0 var(--acc-soft); } 40% { box-shadow: var(--shadow-md), 0 0 0 7px var(--acc-soft); } 100% { box-shadow: var(--shadow-md), 0 0 0 0 transparent; } }
-@media (prefers-reduced-motion: reduce) { #main.is-empty #reminder:not([hidden]) { animation: none !important; } }
+@keyframes rmPro { from { opacity: 0; transform: translateX(46px) scale(.96); filter: blur(4px); } to { opacity: 1; transform: none; filter: none; } }
+@keyframes rmProOut { to { opacity: 0; transform: translateX(40px); } }
+@keyframes rmRing { 0% { box-shadow: var(--shadow), 0 0 0 0 var(--acc-soft); } 40% { box-shadow: var(--shadow), 0 0 0 7px var(--acc-soft); } 100% { box-shadow: var(--shadow), 0 0 0 0 transparent; } }
+@media (prefers-reduced-motion: reduce) { #reminder.pop, #reminder.out { animation: none !important; } }

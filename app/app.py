@@ -1394,6 +1394,9 @@ class Api:
             import requests
             branch = cfg.get("branch", "main")
             ref = _latest_commit(repo, branch) or branch  # an exact commit is never served from an old cache
+            cached = getattr(self, "_rem_cache", None)
+            if cached and cached[0] == (repo, ref) and ref != branch:
+                return cached[1]  # nothing new on GitHub since the last look: no second request
             url = "https://raw.githubusercontent.com/{}/{}/reminder.json?t={}".format(repo, ref, int(time.time()))
             hdrs = {"Cache-Control": "no-cache"}
             if cfg.get("token"):
@@ -1403,7 +1406,13 @@ class Api:
                 return {"id": "", "text": ""}
             data = json.loads(resp.content.decode("utf-8-sig"))
             text = str(data.get("text", "")).strip()[:400]
-            return {"id": str(data.get("id", ""))[:40], "text": text}
+            look = str(data.get("look", "")).strip().lower()
+            mine = "hermes" if _theme() == "hermes" else "cyberpunk"
+            if look in ("hermes", "cyberpunk") and look != mine:  # sent to the other app (e.g. the other look on a shared repo)
+                return {"id": "", "text": ""}
+            res = {"id": str(data.get("id", ""))[:40], "text": text}
+            self._rem_cache = ((repo, ref), res)
+            return res
         except Exception as exc:
             _log("get_reminder failed: " + repr(exc))
             return {"id": "", "text": ""}
@@ -2071,7 +2080,10 @@ class Api:
 # ---------------------------------------------------------------------------
 # Start-up
 # ---------------------------------------------------------------------------
-APP_ID = "Aura.App"   # same id as the Aura shortcut (make_shortcut.ps1), so Windows groups them under one icon
+def _app_id() -> str:
+    """Taskbar identity. Each look has its own, so the professional app never borrows the cyberpunk app's icon.
+    The same ids are used by make_shortcut.ps1, so a shortcut and its running window group under one icon."""
+    return "Aura.App.Pro" if _theme() == "hermes" else "Aura.App"
 
 
 def _set_window_app_id(hwnd, icon: Path) -> None:
@@ -2100,7 +2112,7 @@ def _set_window_app_id(hwnd, icon: Path) -> None:
         (2, '"{}" "{}"'.format(py if py.exists() else sys.executable, ROOT / "app" / "app.py")),  # RelaunchCommand
         (4, "Aura"),                                                                  # RelaunchDisplayNameResource
         (3, str(icon) + ",0"),                                                        # RelaunchIconResource
-        (5, APP_ID),                                                                  # AppUserModel.ID
+        (5, _app_id()),                                                             # AppUserModel.ID
     )
     shell32 = ctypes.WinDLL("shell32")
     shell32.SHGetPropertyStoreForWindow.argtypes = [w.HWND, ctypes.POINTER(GUID), ctypes.POINTER(ctypes.c_void_p)]
@@ -2144,6 +2156,9 @@ def _set_window_icon() -> None:
     try:
         u = _user32()
         icon = ROOT / "app" / ("aura_pro.ico" if _theme() == "hermes" else "aura_icon4.ico")  # each look has its own icon
+        custom = os.environ.get("AURA_ICON", "")  # a launcher can name its own icon file (inside the app folder)
+        if custom and (ROOT / "app" / Path(custom).name).exists():
+            icon = ROOT / "app" / Path(custom).name
         if not icon.exists():
             icon = ROOT / "app" / "icon.ico"
         hwnd = _wait_for_window("Aura", 240, 0.25)  # a slow first start can take a while
@@ -2294,7 +2309,7 @@ def _already_running() -> bool:
         import hashlib
         k = ctypes.windll.kernel32
         k.CreateMutexW.restype = ctypes.c_void_p
-        name = "Local\\AuraApp_" +hashlib.md5(str(ROOT).lower().encode("utf-8")).hexdigest()[:16]
+        name = "Local\\AuraApp_" +hashlib.md5((str(ROOT).lower() + "|" + _theme()).encode("utf-8")).hexdigest()[:16]
         _instance_lock = k.CreateMutexW(None, False, name)
         if ctypes.GetLastError() != 183:  # 183 = the mutex existed already
             return False
@@ -2317,7 +2332,7 @@ def main() -> None:
     if _already_running():
         return
     try:
-        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(APP_ID)  # before any window exists
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(_app_id())  # before any window exists
     except Exception:
         pass
     for folder in (CHATS_DIR, LOG_FILE.parent):  # a fresh install has neither

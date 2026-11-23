@@ -13,6 +13,7 @@ $theme = ''
 try { $theme = (Get-Content (Join-Path $root 'theme.txt') -ErrorAction Stop | Select-Object -First 1).Trim() } catch { }
 if ($theme -eq 'hermes') { $ico = Join-Path $root 'app\aura_pro.ico' }
 $appId = 'Aura.App'
+if ($theme -eq 'hermes') { $appId = 'Aura.App.Pro' }  # the professional look has its own taskbar identity
 if (-not (Test-Path $py)) { exit 1 }
 
 $code = @'

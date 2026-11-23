@@ -1677,41 +1677,44 @@
   $("tsDrag").addEventListener("mousedown", dragWin);
   $("tsDrag").addEventListener("dblclick", toggleMax);
 
-  /* ---- live reminder on the front page (read from the update repo, so no new version is needed) ---- */
+  /* ---- live reminder: pops up like a notification, wherever she is in the app ---- */
   (function () {
     var box = $("reminder"); if (!box) return;
-    var txt = box.querySelector(".rm-text"), seenKey = "auraReminderSeen", cur = { id: "", text: "" }, last = 0;
+    document.body.appendChild(box); // a fixed notification must not live inside #main
+    var txt = box.querySelector(".rm-text"), seenKey = "auraReminderSeen", cur = { id: "", text: "" }, last = 0, showing = false, focusSecs = 0;
     function seen() { try { return localStorage.getItem(seenKey) || ""; } catch (e) { return ""; } }
     function splashUp() { var s = $("splash"); return !!(s && s.isConnected && !s.classList.contains("hide")); }
-    function render() {
-      var on = !!(cur.text && cur.id !== seen());
-      if (on && splashUp()) { box.hidden = true; setTimeout(function () { render(); check(); }, 250); return; } // pop up right after the loading screen, so its animation is seen
-      box.hidden = !on; if (on) txt.textContent = cur.text;
+    function hide() {
+      if (!showing) return;
+      showing = false; box.classList.add("out");
+      setTimeout(function () { if (!showing) { box.hidden = true; box.classList.remove("out"); } }, 350);
     }
-    var shownOnFront = false;
-    function markSeen() { shownOnFront = false; try { localStorage.setItem(seenKey, cur.id); } catch (e) { /* ignore */ } render(); }
-    // it counts as read once she has seen it on the front page and then leaves that page or starts typing: then it is gone for good
-    function check() {
-      var m = $("main"), front = !!(m && m.classList.contains("is-empty"));
-      if (box.hidden) return;
-      if (front) shownOnFront = true; else if (shownOnFront) markSeen();
+    function markSeen() { try { localStorage.setItem(seenKey, cur.id); } catch (e) { /* ignore */ } hide(); }
+    function show() {
+      if (!cur.text || cur.id === seen()) { hide(); return; }
+      if (splashUp()) { setTimeout(show, 250); return; } // pop up right after the loading screen so the animation is seen
+      if (showing) { if (txt.textContent !== cur.text) { txt.textContent = cur.text; focusSecs = 0; } return; } // a different message restarts the 15 seconds; a re-check does not
+      txt.textContent = cur.text;
+      showing = true; focusSecs = 0;
+      box.classList.remove("out"); box.hidden = false;
+      box.classList.remove("pop"); void box.offsetWidth; box.classList.add("pop"); // play the pop-up animation
     }
     box.querySelector(".rm-x").addEventListener("click", markSeen);
-    var mEl = $("main"); if (mEl && window.MutationObserver) new MutationObserver(check).observe(mEl, { attributes: true, attributeFilter: ["class"] });
-    var inEl = $("input"); if (inEl) inEl.addEventListener("input", function () { if (shownOnFront && !box.hidden) markSeen(); });
+    // she has read it when she starts typing, or after 15 seconds with Aura in front of her; then it is gone for good
+    var inEl = $("input"); if (inEl) inEl.addEventListener("input", function () { if (showing) markSeen(); });
+    setInterval(function () { if (showing && !splashUp() && document.hasFocus() && ++focusSecs >= 15) markSeen(); }, 1000);
     function load() {
       if (!api || !api.get_reminder) return;
       last = Date.now();
       api.get_reminder().then(function (r) {
         if (!r) return;
         cur = { id: String(r.id || ""), text: String(r.text || "") };
-        render();
-        check();
+        show();
       }).catch(noop);
     }
     var firstTry = setInterval(function () { if (api) { clearInterval(firstTry); load(); } }, 300); // first read the moment the app is ready
-    setInterval(function () { if (api && Date.now() - last > 300000) load(); }, 15000); // then every 5 minutes
-    window.addEventListener("focus", function () { if (Date.now() - last > 60000) load(); });
+    setInterval(function () { if (api && Date.now() - last > (document.hasFocus() ? 4000 : 15000)) load(); }, 1000); // a new reminder shows up within seconds
+    window.addEventListener("focus", function () { if (Date.now() - last > 2000) load(); });
   })();
 
   /* ---- app menu (top-left): the same things a File / Help menu would hold ---- */

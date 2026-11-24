@@ -832,6 +832,46 @@ class Api:
             _log("delete_all_sessions failed: " + repr(exc))
         return n
 
+    def read_image(self, path) -> dict:
+        """Give the page a picture file so it can show it in the chat. Only picture files, only inside the
+        user folder, the project folder or the temp folder, at most 20 MB."""
+        try:
+            raw = str(path or "").strip()
+            if raw.lower().startswith("file:///"):
+                raw = raw[8:].replace("/", "\\")
+            p = Path(raw).expanduser().resolve()
+            mime = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif",
+                    ".webp": "image/webp", ".bmp": "image/bmp"}.get(p.suffix.lower())
+            if not mime:
+                return {"url": ""}
+            import tempfile
+            if not p.is_file():
+                # The assistant sometimes writes a slightly wrong folder: look for the same file name in the places
+                # pictures normally live and take the newest one.
+                home = Path.home()
+                found = []
+                for folder in (DROP_DIR, ROOT / "chats", ROOT / "logs", home / "Aura", home / "Desktop",
+                               home / "Downloads", home / "Pictures", home / "Pictures" / "Screenshots",
+                               Path(tempfile.gettempdir())):
+                    try:
+                        for cand in folder.rglob(p.name):
+                            if cand.is_file():
+                                found.append(cand)
+                    except Exception:
+                        pass
+                if not found:
+                    return {"url": ""}
+                p = max(found, key=lambda c: c.stat().st_mtime).resolve()
+            allowed = [Path.home().resolve(), ROOT.resolve(), Path(tempfile.gettempdir()).resolve()]
+            if not any(p == a or a in p.parents for a in allowed):
+                return {"url": ""}
+            if p.stat().st_size > 20 * 1024 * 1024:
+                return {"url": ""}
+            return {"url": "data:" + mime + ";base64," + base64.b64encode(p.read_bytes()).decode("ascii")}
+        except Exception as exc:
+            _log("read_image failed: " + repr(exc))
+            return {"url": ""}
+
     def save_dropped(self, name, data) -> dict:
         """Keep a copy of a dropped file so the assistant can read it. Returns its path."""
         try:
@@ -2329,6 +2369,480 @@ def _force_taskbar_button(u, hwnd) -> None:
             u.ShowWindow(hwnd, SW_SHOW)
 
 
+def _start_size_guard(hwnd) -> None:
+    """Without a title bar Windows makes the window about one title-bar taller on every minimize/restore.
+    This watcher remembers the normal size and puts it back for one second after a restore (no window hook)."""
+    def loop() -> None:
+        u = _user32()
+        from ctypes import wintypes as w
+        last = None
+        prev = "norm"
+        guard_until = 0.0
+        seen, still = None, 0     # the size counts as "the normal size" only after it stayed the same for 0.3 s
+        while True:
+            try:
+                if not u.IsWindow(hwnd):
+                    return
+                state = "min" if u.IsIconic(hwnd) else ("max" if u.IsZoomed(hwnd) else "norm")
+                now = time.monotonic()
+                if state == "norm":
+                    rc = w.RECT()
+                    if u.GetWindowRect(hwnd, ctypes.byref(rc)):
+                        cur = (rc.left, rc.top, rc.right - rc.left, rc.bottom - rc.top)
+                        if prev != "norm":
+                            guard_until = now + 1.0
+                        if now < guard_until and last and cur != last:
+                            u.SetWindowPos(hwnd, None, last[0], last[1], last[2], last[3], SWP_NOZORDER | SWP_NOACTIVATE)
+                        elif now >= guard_until:
+                            still = still + 1 if cur == seen else 0
+                            seen = cur
+                            if still >= 10:
+                                last = cur
+                prev = state
+            except Exception:
+                pass
+            time.sleep(0.03)
+    threading.Thread(target=loop, daemon=True).start()
+
+
+# ---------------------------------------------------------------------------
+# Minimize animation: Aura flies into ITS OWN taskbar button and grows back out of it.
+# In plain words:
+#  - A hook only WATCHES the messages of Aura's window thread (it never changes or swallows one). The moment
+#    Windows starts to minimize Aura (taskbar click, the app's own button, Win+D, ...) the window is still on
+#    screen: the hook asks the helper thread to lay a "ghost" (a live picture of Aura drawn by Windows/DWM)
+#    exactly over it, waits until that is on screen (at most 0.1 s), then lets the minimize go on. Windows' own
+#    effect is off for Aura, so the window vanishes at once under the ghost and the ghost flies into the button.
+#  - On restore the hook hides the window (DWM "cloak": it still gets its size and place) and the ghost grows
+#    out of the button; at the end the window is shown under the ghost and then the ghost goes (no gap, no jump).
+#  - The ghost is a click-through tool window: never a taskbar button, never focus, never clicks.
+#  - Every frame is timed by the screen refresh (DwmFlush) and by the clock (time-based easing), in one thread.
+#  - If anything is missing or fails, Windows' normal minimize/restore runs and the window is never left hidden.
+# ---------------------------------------------------------------------------
+_ANIM = {"ok": False, "button": None, "ask": None, "min": False, "back": None, "job": None, "ready": None,
+         "tid": 0, "cloaked": False, "cloaked_at": 0.0, "keep": []}
+ANIM_SECONDS = 0.25
+
+
+def _anim_enabled() -> bool:
+    """Windows' "Animation effects" setting (off = no animation at all)."""
+    try:
+        on = ctypes.c_int(0)
+        ctypes.windll.user32.SystemParametersInfoW(0x1042, 0, ctypes.byref(on), 0)   # SPI_GETCLIENTAREAANIMATION
+        return bool(on.value)
+    except Exception:
+        return False
+
+
+def _button_finder() -> None:
+    """Keeps a hidden PowerShell open that finds Aura's own taskbar button by its app id (UI Automation,
+    about 15 ms per question). Asked at every minimize and every few seconds; the answer is the button's middle."""
+    app_id = _app_id().replace("'", "")
+    script = (
+        "Add-Type -AssemblyName UIAutomationClient,UIAutomationTypes;"
+        "$A=[Windows.Automation.AutomationElement];$P=[Windows.Automation.PropertyCondition];"
+        "$id=New-Object $P($A::AutomationIdProperty,'Appid: " + app_id + "');"
+        "$t1=New-Object $P($A::ClassNameProperty,'Shell_TrayWnd');"
+        "$t2=New-Object $P($A::ClassNameProperty,'Shell_SecondaryTrayWnd');"
+        "$tc=New-Object Windows.Automation.OrCondition($t1,$t2);"
+        "while(($l=[Console]::In.ReadLine()) -ne $null){$o=@();"
+        "try{foreach($t in $A::RootElement.FindAll('Children',$tc)){$e=$t.FindFirst('Descendants',$id);"
+        "if($e){$r=$e.Current.BoundingRectangle;"
+        "$o+=('{0} {1} {2} {3}' -f [int]$r.X,[int]$r.Y,[int]$r.Width,[int]$r.Height)}}}catch{}"
+        "if($o.Count){$o=$o -join ';'}else{$o='none'};[Console]::Out.WriteLine($o);[Console]::Out.Flush()}"
+    )
+    ask = _ANIM["ask"]
+    for _start in range(5):   # a helper that dies is started again a few times, then we give up (no animation)
+        try:
+            proc = subprocess.Popen(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script],
+                                    stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                                    text=True, bufsize=1, **no_window.hidden())
+        except Exception as exc:
+            _log("anim: button finder failed to start: " + repr(exc))
+            return
+        try:
+            while True:
+                proc.stdin.write("?\n")
+                proc.stdin.flush()
+                line = proc.stdout.readline()
+                if not line:
+                    break
+                found = []   # one button per taskbar (each screen can have its own taskbar)
+                for item in line.strip().split(";"):
+                    parts = item.split()
+                    if len(parts) == 4:
+                        x, y, bw, bh = (int(v) for v in parts)
+                        if 8 <= bw <= 400 and 8 <= bh <= 400:
+                            found.append((x, y, bw, bh))
+                _ANIM["button"] = found or None   # None = not visible (auto-hidden taskbar...): Windows' own effect
+                ask.wait(4.0)
+                ask.clear()
+        except Exception as exc:
+            _log("anim: button finder stopped: " + repr(exc))
+        finally:
+            try:
+                proc.kill()
+            except Exception:
+                pass
+        _ANIM["button"] = None
+        time.sleep(2)
+
+
+def _start_minimize_anim(hwnd) -> None:
+    """Switch the fly-to-taskbar minimize on (does nothing if Windows' animation effects are off)."""
+    if not _anim_enabled():
+        return
+    _ANIM["ask"] = threading.Event()
+    _ANIM["ready"] = threading.Event()
+    threading.Thread(target=_button_finder, daemon=True).start()
+    threading.Thread(target=_anim_thread, args=(hwnd,), daemon=True).start()
+
+
+def _anim_thread(hwnd) -> None:
+    from ctypes import wintypes as w
+    try:
+        u = ctypes.WinDLL("user32")   # own copies: these signatures do not touch _user32()
+        dwm = ctypes.WinDLL("dwmapi")
+        k32 = ctypes.WinDLL("kernel32")
+
+        class WNDCLASSEXW(ctypes.Structure):
+            _fields_ = [("cbSize", w.UINT), ("style", w.UINT), ("lpfnWndProc", ctypes.c_void_p),
+                        ("cbClsExtra", ctypes.c_int), ("cbWndExtra", ctypes.c_int), ("hInstance", w.HINSTANCE),
+                        ("hIcon", w.HICON), ("hCursor", w.HANDLE), ("hbrBackground", w.HBRUSH),
+                        ("lpszMenuName", w.LPCWSTR), ("lpszClassName", w.LPCWSTR), ("hIconSm", w.HICON)]
+
+        class THUMB(ctypes.Structure):   # DWM_THUMBNAIL_PROPERTIES
+            _fields_ = [("dwFlags", w.DWORD), ("rcDestination", w.RECT), ("rcSource", w.RECT),
+                        ("opacity", ctypes.c_ubyte), ("fVisible", w.BOOL), ("fSourceClientAreaOnly", w.BOOL)]
+
+        class CWP(ctypes.Structure):     # what the hook sees: one message sent to a window
+            _fields_ = [("lParam", w.LPARAM), ("wParam", w.WPARAM), ("message", w.UINT), ("hwnd", w.HWND)]
+
+        class WPOS(ctypes.Structure):    # WINDOWPOS: where Windows is about to put the window
+            _fields_ = [("hwnd", w.HWND), ("after", w.HWND), ("x", ctypes.c_int), ("y", ctypes.c_int),
+                        ("cx", ctypes.c_int), ("cy", ctypes.c_int), ("flags", w.UINT)]
+
+        class MONITORINFO(ctypes.Structure):
+            _fields_ = [("cbSize", w.DWORD), ("rcMonitor", w.RECT), ("rcWork", w.RECT), ("dwFlags", w.DWORD)]
+
+        u.MonitorFromRect.restype, u.MonitorFromRect.argtypes = w.HANDLE, [ctypes.POINTER(w.RECT), w.DWORD]
+        u.GetMonitorInfoW.argtypes = [w.HANDLE, ctypes.POINTER(MONITORINFO)]
+        HOOKPROC = ctypes.WINFUNCTYPE(w.LPARAM, ctypes.c_int, w.WPARAM, w.LPARAM)
+        k32.GetModuleHandleW.restype, k32.GetModuleHandleW.argtypes = w.HMODULE, [w.LPCWSTR]
+        u.RegisterClassExW.restype, u.RegisterClassExW.argtypes = w.ATOM, [ctypes.POINTER(WNDCLASSEXW)]
+        u.CreateWindowExW.restype = w.HWND
+        u.CreateWindowExW.argtypes = [w.DWORD, w.LPCWSTR, w.LPCWSTR, w.DWORD, ctypes.c_int, ctypes.c_int,
+                                      ctypes.c_int, ctypes.c_int, w.HWND, w.HMENU, w.HINSTANCE, w.LPVOID]
+        u.SetLayeredWindowAttributes.argtypes = [w.HWND, w.DWORD, ctypes.c_ubyte, w.DWORD]
+        u.SetWindowPos.argtypes = [w.HWND, w.HWND, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, w.UINT]
+        u.ShowWindow.argtypes = [w.HWND, ctypes.c_int]
+        u.IsWindow.argtypes = [w.HWND]
+        u.IsIconic.argtypes = [w.HWND]
+        u.GetWindowRect.argtypes = [w.HWND, ctypes.POINTER(w.RECT)]
+        u.FindWindowW.restype, u.FindWindowW.argtypes = w.HWND, [w.LPCWSTR, w.LPCWSTR]
+        u.GetWindowThreadProcessId.restype = w.DWORD
+        u.GetWindowThreadProcessId.argtypes = [w.HWND, ctypes.c_void_p]
+        u.SetWindowsHookExW.restype = w.HANDLE
+        u.SetWindowsHookExW.argtypes = [ctypes.c_int, HOOKPROC, w.HINSTANCE, w.DWORD]
+        u.CallNextHookEx.restype = w.LPARAM
+        u.CallNextHookEx.argtypes = [w.HANDLE, ctypes.c_int, w.WPARAM, w.LPARAM]
+        u.PostThreadMessageW.argtypes = [w.DWORD, w.UINT, w.WPARAM, w.LPARAM]
+        u.PeekMessageW.argtypes = [ctypes.POINTER(w.MSG), w.HWND, w.UINT, w.UINT, w.UINT]
+        u.GetMessageW.argtypes = [ctypes.POINTER(w.MSG), w.HWND, w.UINT, w.UINT]
+        u.DispatchMessageW.argtypes = [ctypes.POINTER(w.MSG)]
+        dwm.DwmSetWindowAttribute.argtypes = [w.HWND, w.DWORD, ctypes.c_void_p, w.DWORD]
+        dwm.DwmRegisterThumbnail.argtypes = [w.HWND, w.HWND, ctypes.POINTER(w.HANDLE)]
+        dwm.DwmUpdateThumbnailProperties.argtypes = [w.HANDLE, ctypes.POINTER(THUMB)]
+        dwm.DwmUnregisterThumbnail.argtypes = [w.HANDLE]
+        dwm.DwmFlush.argtypes = []
+        WM_ANIM = 0x8000 + 0x41   # WM_APP + n: "there is a new job"
+
+        def transitions_off(h, off: bool) -> None:   # DWMWA_TRANSITIONS_FORCEDISABLED: Windows' own min/restore effect
+            dwm.DwmSetWindowAttribute(h, 3, ctypes.byref(ctypes.c_int(1 if off else 0)), 4)
+
+        def cloak(on: bool) -> None:   # DWMWA_CLOAK: the window keeps its place and taskbar button but is not drawn
+            dwm.DwmSetWindowAttribute(hwnd, 13, ctypes.byref(ctypes.c_int(1 if on else 0)), 4)
+            _ANIM["cloaked"] = on
+            _ANIM["cloaked_at"] = time.monotonic()
+
+        def rect_of(h):
+            rc = w.RECT()
+            if not u.GetWindowRect(h, ctypes.byref(rc)):
+                return None
+            return (rc.left, rc.top, rc.right, rc.bottom)
+
+        # The ghost: borderless, always on top, click-through, no focus, no taskbar button, and no surface of its
+        # own (only the DWM picture of Aura is drawn on it).
+        inst = k32.GetModuleHandleW(None)
+        wc = WNDCLASSEXW()
+        wc.cbSize = ctypes.sizeof(WNDCLASSEXW)
+        wc.lpfnWndProc = ctypes.cast(u.DefWindowProcW, ctypes.c_void_p).value
+        wc.hInstance = inst
+        wc.lpszClassName = "AuraMinimizeGhost"
+        if not u.RegisterClassExW(ctypes.byref(wc)):
+            _log("anim: class failed")
+            return
+        ex = 0x80 | 0x8 | 0x08000000 | 0x20 | 0x80000 | 0x00200000
+        # TOOLWINDOW | TOPMOST | NOACTIVATE | TRANSPARENT | LAYERED | NOREDIRECTIONBITMAP
+        ghost = u.CreateWindowExW(ex, "AuraMinimizeGhost", "", 0x80000000, 0, 0, 1, 1, None, None, inst, None)
+        if not ghost:
+            _log("anim: ghost window failed")
+            return
+        u.SetLayeredWindowAttributes(ghost, 0, 255, 0x2)   # LWA_ALPHA, fully visible (layered = click-through)
+        transitions_off(ghost, True)
+        state = {"thumb": None, "box": (0, 0, 1, 1), "cur": None, "op": 255}
+        props = THUMB()
+        props.fVisible = True
+
+        def show_ghost(box) -> bool:
+            """Lay the (still empty) ghost over the area the flight needs and connect the live picture."""
+            if state["thumb"] is None:
+                th = w.HANDLE()
+                if dwm.DwmRegisterThumbnail(ghost, hwnd, ctypes.byref(th)) != 0:
+                    return False
+                state["thumb"] = th
+            state["box"] = box
+            u.SetWindowPos(ghost, w.HWND(-1), box[0], box[1], box[2] - box[0], box[3] - box[1], 0x10 | 0x40)
+            return True
+
+        def put(r, op: int) -> None:
+            """Draw the picture of Aura at screen rect r with opacity op (0-255)."""
+            bx = state["box"]
+            props.dwFlags = 0x1 | 0x4 | 0x8   # destination, opacity, visible
+            props.rcDestination = w.RECT(r[0] - bx[0], r[1] - bx[1], r[2] - bx[0], r[3] - bx[1])
+            props.opacity = max(0, min(255, int(op)))
+            dwm.DwmUpdateThumbnailProperties(state["thumb"], ctypes.byref(props))
+            state["cur"], state["op"] = r, op
+
+        def hide_ghost() -> None:
+            u.ShowWindow(ghost, 0)   # SW_HIDE
+            if state["thumb"] is not None:
+                dwm.DwmUnregisterThumbnail(state["thumb"])
+                state["thumb"] = None
+            state["cur"] = None
+
+        def monitor_of(r):
+            mi = MONITORINFO()
+            mi.cbSize = ctypes.sizeof(MONITORINFO)
+            mon = u.MonitorFromRect(ctypes.byref(w.RECT(*(int(v) for v in r))), 2)   # MONITOR_DEFAULTTONEAREST
+            if mon and u.GetMonitorInfoW(mon, ctypes.byref(mi)):
+                m = mi.rcMonitor
+                return (m.left, m.top, m.right, m.bottom)
+            return None
+
+        def button_for(full):
+            """Aura's button on the taskbar of the screen the window is on (each screen may show one)."""
+            found = _ANIM["button"]
+            if not found or not full:
+                return None
+            m = monitor_of(full)
+            for b in found:
+                cx, cy = b[0] + b[2] // 2, b[1] + b[3] // 2
+                if m and m[0] <= cx < m[2] and m[1] <= cy < m[3]:
+                    return b
+            return None   # not on this screen's taskbar: Windows' own effect
+
+        def icon_rect(full):
+            """A small copy of the window's shape sitting in the middle of Aura's taskbar button."""
+            b = button_for(full)
+            if not b:
+                return None
+            cx, cy = b[0] + b[2] / 2, b[1] + b[3] / 2
+            fw, fh = max(1, full[2] - full[0]), max(1, full[3] - full[1])
+            ew = b[2] * 0.62
+            eh = ew * fh / fw
+            return (cx - ew / 2, cy - eh / 2, cx + ew / 2, cy + eh / 2)
+
+        def flight_box(full):
+            """The ghost covers the window and its whole screen (so the end point may move a little in flight)."""
+            parts = [tuple(int(v) for v in full)]
+            m = monitor_of(full)
+            if m:
+                parts.append(m)
+            return (min(p[0] for p in parts), min(p[1] for p in parts),
+                    max(p[2] for p in parts), max(p[3] for p in parts))
+
+        def ease_in_out(p):
+            return 4 * p * p * p if p < 0.5 else 1 - (-2 * p + 2) ** 3 / 2
+
+        def ease_out(p):
+            return 1 - (1 - p) ** 3
+
+        def new_job_waiting() -> bool:
+            msg = w.MSG()
+            return bool(u.PeekMessageW(ctypes.byref(msg), None, WM_ANIM, WM_ANIM, 0))   # PM_NOREMOVE
+
+        def fly(start, op0, target_fn, op_fn, ease, label) -> bool:
+            """Move the picture from start to target_fn() (asked again every frame) on the screen's own clock.
+            Returns False if a newer job arrived (it then continues from wherever the picture is now)."""
+            t0 = time.perf_counter()
+            stamps = [t0]
+            done = True
+            while True:
+                p = min(1.0, (time.perf_counter() - t0) / ANIM_SECONDS)
+                e = ease(p)
+                end = target_fn()
+                r = tuple(start[k] + (end[k] - start[k]) * e for k in range(4))
+                put(tuple(int(round(v)) for v in r), op_fn(p, op0))
+                dwm.DwmFlush()   # wait for the screen's next frame (vsync)
+                stamps.append(time.perf_counter())
+                if p >= 1.0:
+                    break
+                if new_job_waiting():
+                    done = False
+                    break
+            gaps = [(b - a) * 1000 for a, b in zip(stamps, stamps[1:])]
+            _log("anim: {} {} frames in {:.0f} ms, longest frame {:.1f} ms{}".format(
+                label, len(gaps), (stamps[-1] - t0) * 1000, max(gaps) if gaps else 0, "" if done else " (interrupted)"))
+            return done
+
+        def do_minimize(full) -> None:
+            start = state["cur"] or full     # a restore still in flight: carry on from where the picture is
+            op0 = state["op"] if state["cur"] else 255
+            if icon_rect(full) is None or not show_ghost(flight_box(full)):
+                _ANIM["ready"].set()
+                return
+            put(start, op0)
+            dwm.DwmFlush()                   # the ghost is now on screen, exactly over the window
+            _ANIM["ready"].set()             # the hook lets the minimize go on
+
+            def fade(p, o):                  # stays solid, then melts into the icon in the last third of the flight
+                q = max(0.0, (p - 0.65) / 0.35)
+                return o * (1 - q * q * (3 - 2 * q))
+            last = [icon_rect(full)]
+
+            def target():                    # follows a fresh button answer; keeps the last one if it goes missing
+                last[0] = icon_rect(full) or last[0]
+                return last[0]
+            if fly(start, op0, target, fade, ease_in_out, "minimize"):
+                hide_ghost()
+            if _ANIM["cloaked"] and u.IsIconic(hwnd):
+                cloak(False)                 # minimized again during a restore: nothing is drawn anyway
+
+        def do_restore(full) -> None:
+            if u.IsIconic(hwnd):             # minimized again before this job started: nothing to show
+                if _ANIM["cloaked"]:
+                    cloak(False)
+                return
+            small = state["cur"] or icon_rect(full)
+            op0 = state["op"] if state["cur"] else 0
+            if small is None or not show_ghost(flight_box(full)):
+                cloak(False)
+                return
+
+            def target():
+                return full
+
+            def appear(p, o):                # comes out of the icon and is solid after the first 40 %
+                q = min(1.0, p / 0.4)
+                return o + (255 - o) * (1 - (1 - q) ** 2)
+            if not fly(small, op0, target, appear, ease_out, "restore"):
+                return                       # minimized again in flight: the next job takes over
+            real = rect_of(hwnd)             # the window's true place (the size guard may have fixed a stretch)
+            if real and real != tuple(int(round(v)) for v in full):
+                put(real, 255)
+                dwm.DwmFlush()
+            cloak(False)                     # the window is drawn under the identical picture...
+            dwm.DwmFlush()
+            dwm.DwmFlush()
+            hide_ghost()                     # ...and only then the picture goes: no gap, no jump
+
+        # ---- the hook: runs on Aura's window thread, only watches ----
+        def on_pos_changing(lparam) -> None:
+            p = WPOS.from_address(lparam)
+            if not _ANIM["min"]:
+                if p.flags & 0x8000 and not p.flags & 0x2 and p.x <= -32000 and u.IsIconic(hwnd):
+                    _ANIM["min"] = True      # Windows is minimizing Aura; the window is still on screen
+                    full = rect_of(hwnd)
+                    _ANIM["ask"].set()       # look up the button again (the answer may retarget the flight)
+                    if not (full and full[0] > -30000 and icon_rect(full) and _anim_enabled()):
+                        transitions_off(hwnd, False)   # no button known: Windows' own effect
+                        _ANIM["back"] = None
+                        return
+                    transitions_off(hwnd, True)
+                    _ANIM["back"] = full
+                    _ANIM["ready"].clear()
+                    _ANIM["job"] = ("min", full)
+                    u.PostThreadMessageW(_ANIM["tid"], WM_ANIM, 0, 0)
+                    if not _ANIM["ready"].wait(0.1):
+                        _log("anim: ghost was late")
+            elif not u.IsIconic(hwnd):
+                _ANIM["min"] = False         # Windows is restoring Aura
+                full = _ANIM["back"]
+                if not (full and icon_rect(full) and _anim_enabled()):
+                    transitions_off(hwnd, False)
+                    return
+                transitions_off(hwnd, True)
+                cloak(True)                  # hidden until the picture has grown out of the icon
+                _ANIM["job"] = ("res", full)
+                u.PostThreadMessageW(_ANIM["tid"], WM_ANIM, 0, 0)
+
+        def hook(code, wparam, lparam):
+            try:
+                if code >= 0:
+                    c = CWP.from_address(lparam)
+                    if c.message == 0x46 and c.hwnd == hwnd:   # WM_WINDOWPOSCHANGING
+                        on_pos_changing(c.lParam)
+            except Exception as exc:
+                _log("anim hook: " + repr(exc))
+            return u.CallNextHookEx(None, code, wparam, lparam)
+
+        proc = HOOKPROC(hook)
+        _ANIM["keep"].append(proc)   # the callback must stay alive as long as the hook
+        msg = w.MSG()
+        u.PeekMessageW(ctypes.byref(msg), None, 0, 0, 0)   # give this thread a message queue first
+        _ANIM["tid"] = k32.GetCurrentThreadId()
+        if not u.SetWindowsHookExW(4, proc, None, u.GetWindowThreadProcessId(hwnd, None)):   # WH_CALLWNDPROC
+            _log("anim: hook failed")
+            return
+        _ANIM["ok"] = True
+        threading.Thread(target=_anim_watchdog, args=(hwnd,), daemon=True).start()
+        while u.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
+            if msg.message == WM_ANIM:
+                job, _ANIM["job"] = _ANIM["job"], None
+                if not job:
+                    continue
+                try:
+                    (do_minimize if job[0] == "min" else do_restore)(job[1])
+                except Exception as exc:
+                    _log("anim job failed: " + repr(exc))
+                    _ANIM["ready"].set()
+                    try:
+                        hide_ghost()
+                        if _ANIM["cloaked"]:
+                            cloak(False)
+                    except Exception:
+                        pass
+            else:
+                u.DispatchMessageW(ctypes.byref(msg))
+    except Exception as exc:
+        _log("anim failed: " + repr(exc))
+    _ANIM["ok"] = False
+    try:   # never leave the window hidden or without Windows' own effect
+        ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd, 13, ctypes.byref(ctypes.c_int(0)), 4)
+        ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd, 3, ctypes.byref(ctypes.c_int(0)), 4)
+        _ANIM["cloaked"] = False
+    except Exception:
+        pass
+
+
+def _anim_watchdog(hwnd) -> None:
+    """Safety net: a window that is restored but still hidden after 1.5 s is shown again."""
+    u = _user32()
+    while True:
+        time.sleep(0.25)
+        try:
+            if not u.IsWindow(hwnd):
+                return
+            if _ANIM["cloaked"] and time.monotonic() - _ANIM["cloaked_at"] > 1.5 \
+                    and not ctypes.windll.user32.IsIconic(hwnd):
+                ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd, 13, ctypes.byref(ctypes.c_int(0)), 4)
+                _ANIM["cloaked"] = False
+                _log("anim: window was still hidden after a restore, shown again")
+        except Exception:
+            pass
+
+
 def _set_window_icon() -> None:
     """Give the window and taskbar the Aura icon and drop the native title bar (Windows only)."""
     try:
@@ -2384,6 +2898,8 @@ def _set_window_icon() -> None:
         style = u.GetWindowLongW(hwnd, GWL_STYLE)
         u.SetWindowLongW(hwnd, GWL_STYLE, _as_long(style & ~WS_CAPTION))
         u.SetWindowPos(hwnd, None, 0, 0, 0, 0, SWP_NOSIZE | SWP_NOMOVE | SWP_NOZORDER | SWP_FRAMECHANGED)
+        _start_size_guard(hwnd)
+        _start_minimize_anim(hwnd)   # fly into the taskbar button (no-op if animations are off)
         # Windows 11 paints a lighter, see-through strip at the top (the hidden caption bar) and a colored
         # border: paint both in the app's own dark color (COLORREF 0x00BBGGRR for #060709) and use no backdrop.
         try:

@@ -234,17 +234,121 @@
     });
     return wrap;
   }
+
+  /* ---------- pictures inside answers: a markdown image or a path to a picture file shows the picture ---------- */
+  var picCache = {};
+  var IMG_PATH_RE = /!\[[^\]\n]*\]\(\s*<?([^)>\n]+?)>?\s*\)|((?:[A-Za-z]:\\|file:\/\/\/)[^\\\/:*?"<>|\r\n`]+(?:[\\\/][^\\\/:*?"<>|\r\n`]+)*\.(?:png|jpe?g|gif|webp|bmp))/gi;
+
+  /* ---------- picture viewer: click a picture in the chat to inspect it (wheel = zoom, drag = move) ---------- */
+  function openLightbox(url) {
+    var old = document.getElementById("lightbox"); if (old) old.remove();
+    var box = document.createElement("div"); box.id = "lightbox"; box.setAttribute("role", "dialog");
+    box.setAttribute("aria-label", "Picture viewer");
+    var im = document.createElement("img"); im.src = url; im.draggable = false; im.alt = "Picture";
+    var bar = document.createElement("div"); bar.className = "lb-bar";
+    function mk(txt, label, fn) {
+      var b = document.createElement("button"); b.type = "button"; b.textContent = txt; b.title = label;
+      b.setAttribute("aria-label", label); b.addEventListener("click", function (e) { e.stopPropagation(); fn(); });
+      bar.appendChild(b); return b;
+    }
+    var hint = document.createElement("span"); hint.className = "lb-hint";
+    hint.textContent = "Wheel: zoom · Drag: move · Double-click: 100% · Esc: close";
+    var scale = 1, fit = 1, tx = 0, ty = 0, drag = null;
+    function apply() { im.style.transform = "translate(" + tx + "px," + ty + "px) scale(" + scale + ")"; }
+    function fitIt() {
+      var w = im.naturalWidth || 1, h = im.naturalHeight || 1;
+      fit = Math.min((window.innerWidth * 0.94) / w, (window.innerHeight * 0.88) / h, 1);
+      scale = fit; tx = 0; ty = 0; apply();
+    }
+    function zoomAt(f, cx, cy) {
+      var ns = Math.max(fit * 0.5, Math.min(scale * f, 16));
+      var r = im.getBoundingClientRect();
+      var ox = cx - (r.left + r.width / 2), oy = cy - (r.top + r.height / 2);
+      var k = ns / scale; tx -= ox * (k - 1); ty -= oy * (k - 1); scale = ns; apply();
+    }
+    function close() { box.remove(); document.removeEventListener("keydown", onKey, true); }
+    function onKey(e) {
+      if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); close(); }
+      else if (e.key === "+" || e.key === "=") zoomAt(1.25, window.innerWidth / 2, window.innerHeight / 2);
+      else if (e.key === "-") zoomAt(0.8, window.innerWidth / 2, window.innerHeight / 2);
+      else if (e.key === "0") fitIt();
+    }
+    mk("+", "Zoom in", function () { zoomAt(1.25, window.innerWidth / 2, window.innerHeight / 2); });
+    mk("−", "Zoom out", function () { zoomAt(0.8, window.innerWidth / 2, window.innerHeight / 2); });
+    mk("Fit", "Fit to window", fitIt);
+    mk("100%", "Actual size", function () { scale = 1; tx = 0; ty = 0; apply(); });
+    mk("×", "Close", close);
+    box.appendChild(im); box.appendChild(bar); box.appendChild(hint);
+    box.addEventListener("wheel", function (e) { e.preventDefault(); zoomAt(e.deltaY < 0 ? 1.15 : 1 / 1.15, e.clientX, e.clientY); }, { passive: false });
+    im.addEventListener("mousedown", function (e) { e.preventDefault(); drag = { x: e.clientX - tx, y: e.clientY - ty, moved: false }; im.classList.add("grab"); });
+    window.addEventListener("mousemove", function mv(e) {
+      if (!document.body.contains(box)) { window.removeEventListener("mousemove", mv); return; }
+      if (drag) { tx = e.clientX - drag.x; ty = e.clientY - drag.y; drag.moved = true; apply(); }
+    });
+    window.addEventListener("mouseup", function up() {
+      if (!document.body.contains(box)) { window.removeEventListener("mouseup", up); return; }
+      drag = null; im.classList.remove("grab");
+    });
+    im.addEventListener("dblclick", function () { if (Math.abs(scale - 1) < 0.01) fitIt(); else { scale = 1; tx = 0; ty = 0; apply(); } });
+    box.addEventListener("click", function (e) { if (e.target === box) close(); });
+    document.addEventListener("keydown", onKey, true);
+    document.body.appendChild(box);
+    if (im.complete && im.naturalWidth) fitIt(); else im.addEventListener("load", fitIt);
+  }
+  function imageBlock(path) {
+    var fig = document.createElement("div"); fig.className = "chat-img-wrap";
+    var im = document.createElement("img"); im.className = "chat-img"; im.alt = "Picture";
+    im.title = "Click to open and zoom";
+    im.addEventListener("click", function () { if (im.src) openLightbox(im.src); });
+    fig.appendChild(im);
+    function fail() {
+      fig.textContent = "";
+      var n = document.createElement("div"); n.className = "chat-img-miss";
+      n.textContent = "Could not show this picture: " + String(path).split(/[\\\/]/).pop();
+      fig.appendChild(n);
+    }
+    var c = picCache[path];
+    if (c && c.url) { im.src = c.url; return fig; }
+    if (c && c.bad) { fail(); return fig; }
+    if (!c) {
+      c = picCache[path] = { waiting: [] };
+      var go = function () {
+        if (!api || !api.read_image) { delete picCache[path]; c.waiting.forEach(function (w) { w.fail(); }); return; }
+        api.read_image(path).then(function (r) {
+          if (r && r.url) { c.url = r.url; c.waiting.forEach(function (w) { w.ok(r.url); }); }
+          else { c.bad = true; c.waiting.forEach(function (w) { w.fail(); }); }
+        }).catch(function () { c.bad = true; c.waiting.forEach(function (w) { w.fail(); }); });
+      };
+      c.waiting.push({ ok: function (u) { im.src = u; }, fail: fail });
+      go();
+      return fig;
+    }
+    c.waiting.push({ ok: function (u) { im.src = u; }, fail: fail });
+    return fig;
+  }
+  function imagePathsIn(line) {
+    var found = [], m;
+    IMG_PATH_RE.lastIndex = 0;
+    while ((m = IMG_PATH_RE.exec(line))) {
+      var p = (m[1] || m[2] || "").trim();
+      if (p && /\.(png|jpe?g|gif|webp|bmp)$/i.test(p) && found.indexOf(p) < 0) found.push(p);
+    }
+    return found;
+  }
   function renderRich(el, text) {
     el._raw = String(text || ""); // what the message Copy button copies
     var out = document.createDocumentFragment();
     var lines = String(text || "").replace(/\r\n?/g, "\n").split("\n");
     var i = 0, para = [], list = null, listType = null, m;
+    var pendingImgs = [];
+    function flushImgs() { pendingImgs.forEach(function (pth) { out.appendChild(imageBlock(pth)); }); pendingImgs = []; }
     function flushPara() {
-      if (!para.length) return;
+      if (!para.length) { flushImgs(); return; }
       var p = document.createElement("p");
       addInline(p, para.join("\n"));
       out.appendChild(p);
       para = [];
+      flushImgs();
     }
     function flushAll() { flushPara(); list = null; listType = null; }
     while (i < lines.length) {
@@ -260,6 +364,12 @@
         continue;
       }
       if (/^\s*$/.test(line)) { flushAll(); i++; continue; }
+      var imgs = imagePathsIn(line);
+      if (imgs.length) {
+        var rest = line.replace(IMG_PATH_RE, "").replace(/[`*_:()\[\]<>-]/g, "").replace(/\b(saved|screenshot|picture|image|here|to|at|is|as|the|in|file|path)\b/gi, "").trim();
+        if (!rest) { flushAll(); imgs.forEach(function (pth) { out.appendChild(imageBlock(pth)); }); i++; continue; }
+        imgs.forEach(function (pth) { pendingImgs.push(pth); });
+      }
       if ((m = /^(#{1,4})\s+(.*)$/.exec(line))) {
         flushAll();
         var h = document.createElement("h" + (m[1].length + 2));
@@ -1896,7 +2006,26 @@
   })();
   $("splash").addEventListener("mousedown", dragWin); // the loading screen covers the title bar: it can still move the window
   document.querySelector("#sidebar .brand").addEventListener("mousedown", dragWin);
-  $("wcMin").addEventListener("click", function () { if (api) api.win_min().catch(noop); });
+  (function () {  // minimize with a short slide-and-fade, and the reverse when the window comes back
+    var wasMin = false, inTimer = null;
+    function comeBack() {
+      if (!wasMin || document.hidden) return;
+      wasMin = false;
+      document.body.classList.remove("win-out");
+      document.body.classList.add("win-in");
+      clearTimeout(inTimer);
+      inTimer = setTimeout(function () { document.body.classList.remove("win-in"); }, 320);
+    }
+    $("wcMin").addEventListener("click", function () {
+      if (!api) return;
+      wasMin = true;
+      document.body.classList.remove("win-in");
+      api.win_min().catch(noop);
+      setTimeout(function () { if (wasMin && !document.hidden && document.hasFocus()) comeBack(); }, 2500); // minimize did not happen: undo
+    });
+    document.addEventListener("visibilitychange", comeBack);
+    window.addEventListener("focus", comeBack);
+  })();
   $("wcMax").addEventListener("click", toggleMax);
   $("wcClose").addEventListener("click", function () { if (api) api.win_close().catch(noop); });
 
@@ -1996,7 +2125,7 @@
     refreshSessions().then(function () {
       if (sessions.length && sessions[0].title === "New chat") return openSession(sessions[0].id);
       return newChat();
-    });
+    }).catch(function () { try { newChat(); } catch (e) { /* nothing more to do */ } });
     pollOpen();
     pollBusy();
     syncMax();
@@ -2340,13 +2469,17 @@
     var s = $("splash"), t0 = Date.now();
     if (!s) return;
     var host = $("spLoader"), stopLoader = host && window.auraLoader ? window.auraLoader(host) : null;
+    var hidden = false;
     function hide() {
+      if (hidden) return;
+      hidden = true;
       setTimeout(function () {
         s.classList.add("hide");
         setTimeout(function () { if (stopLoader) stopLoader(); s.remove(); }, 400);
       }, Math.max(0, 2400 - (Date.now() - t0)));
     }
     if (document.readyState === "complete") hide(); else window.addEventListener("load", hide);
+    setTimeout(hide, 6000); // failsafe: never stay on the loading screen
   })();
 
   /* ---------- front page: now the #welcome block in index.html (dataset kept for compatibility) ---------- */
@@ -2354,6 +2487,12 @@
 
   if (window.pywebview && window.pywebview.api) ready();
   window.addEventListener("pywebviewready", ready);
+  (function () {  // the ready event can be missed or come before the API exists: keep trying for a while
+    var tries = 0, t = setInterval(function () {
+      if (started || ++tries > 120) { clearInterval(t); return; }
+      ready();
+    }, 500);
+  })();
 })();
 
 /* ---------- Hermes-style cosmetics only (no app logic): icon rail, chat filter, top-bar title,

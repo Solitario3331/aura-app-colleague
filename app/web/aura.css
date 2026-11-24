@@ -860,3 +860,26 @@ body.calm .upd-bar i { width: 100%; opacity: .55; box-shadow: none; }
 @keyframes rmCyberOut { to { opacity: 0; transform: translateX(30px); } }
 @keyframes rmSweep { to { background-position: 220% 0; } }
 @media (prefers-reduced-motion: reduce) { #reminder.pop, #reminder.out, #reminder.pop::after { animation: none !important; } }
+
+/* minimize / restore: a short, quiet slide-and-fade */
+@keyframes winOut { to { opacity: 0; transform: translateY(18px) scale(.975); filter: blur(2px); } }
+@keyframes winIn { from { opacity: 0; transform: translateY(12px) scale(.985); } to { opacity: 1; transform: none; } }
+body.win-out #sidebar, body.win-out #main { animation: winOut .18s cubic-bezier(.4, 0, 1, 1) forwards; }
+body.win-in #sidebar, body.win-in #main { animation: winIn .26s cubic-bezier(.2, .8, .2, 1); }
+@media (prefers-reduced-motion: reduce) { body.win-out #sidebar, body.win-out #main, body.win-in #sidebar, body.win-in #main { animation: none !important; } }
+
+/* pictures inside answers */
+.chat-img-wrap { margin: 8px 0; }
+.chat-img { display: block; max-width: 100%; max-height: 420px; border-radius: 8px; border: 1px solid rgba(128, 128, 128, .28); cursor: zoom-in; background: rgba(128, 128, 128, .08); }
+.chat-img.big { max-height: none; cursor: zoom-out; }
+.chat-img-miss { font-size: 12px; opacity: .7; padding: 6px 0; }
+
+/* picture viewer */
+.chat-img { cursor: zoom-in !important; }
+#lightbox { position: fixed; inset: 0; z-index: 99999; background: rgba(0, 0, 0, .86); display: flex; align-items: center; justify-content: center; overflow: hidden; }
+#lightbox img { max-width: none; max-height: none; transform-origin: center center; cursor: grab; user-select: none; -webkit-user-drag: none; image-rendering: auto; box-shadow: 0 8px 40px rgba(0, 0, 0, .6); }
+#lightbox img.grab { cursor: grabbing; }
+#lightbox .lb-bar { position: absolute; top: 14px; right: 14px; display: flex; gap: 6px; background: rgba(20, 20, 24, .85); border: 1px solid rgba(255, 255, 255, .14); border-radius: 10px; padding: 5px; }
+#lightbox .lb-bar button { min-width: 34px; height: 30px; padding: 0 9px; border: 0; border-radius: 7px; background: transparent; color: #e8e8ee; font: 600 13px/1 inherit; cursor: pointer; }
+#lightbox .lb-bar button:hover { background: rgba(255, 255, 255, .14); }
+#lightbox .lb-hint { position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%); font-size: 12px; color: rgba(255, 255, 255, .6); background: rgba(20, 20, 24, .7); padding: 5px 12px; border-radius: 999px; pointer-events: none; white-space: nowrap; }

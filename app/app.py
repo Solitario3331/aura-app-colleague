@@ -1078,6 +1078,14 @@ class Api:
         except Exception as exc:
             _log("win_theme failed: " + repr(exc))
 
+    def win_ready(self) -> None:
+        """The page has loaded and painted its first (dark) screen: the window may appear now."""
+        _REVEAL["ready"] = True
+        try:
+            _reveal_window(self._main_hwnd(), force=False)
+        except Exception as exc:
+            _log("win_ready failed: " + repr(exc))
+
     def spell_check(self, text, mode="word") -> dict:
         """Spelling help from the local helper. mode 'word': up to 5 corrections for one word ([] if it is spelled right);
         mode 'all': the same text with only spelling mistakes fixed."""
@@ -3085,6 +3093,28 @@ def _anim_watchdog(hwnd) -> None:
             pass
 
 
+_REVEAL = {"styled": False, "ready": False}
+
+
+def _reveal_window(hwnd, force=True) -> None:
+    """The window is created off-screen (so neither the native frame nor an empty white window flashes while it is
+    restyled and the page loads); move it to its place once BOTH are done (force = the safety timer: do it anyway).
+    Does nothing if it is already on screen."""
+    try:
+        if not force and not (_REVEAL["styled"] and _REVEAL["ready"]):
+            return
+        from ctypes import wintypes as w
+        u = _user32()
+        rc = w.RECT()
+        if not u.IsWindow(hwnd) or not u.GetWindowRect(hwnd, ctypes.byref(rc)) or rc.left > -20000:
+            return
+        scale = max(1.0, (u.GetDpiForSystem() or 96) / 96)
+        _w, _h, x, y = _window_geometry()
+        u.SetWindowPos(hwnd, None, int(x * scale), int(y * scale), 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE)
+    except Exception as exc:
+        _log("reveal failed: " + repr(exc))
+
+
 def _set_window_icon() -> None:
     """Give the window and taskbar the Atlas icon and drop the native title bar (Windows only)."""
     try:
@@ -3099,6 +3129,7 @@ def _set_window_icon() -> None:
         if not hwnd:
             _log("icon: window not found")
             return
+        threading.Timer(20.0, _reveal_window, args=(hwnd,)).start()   # safety net: never leave it off-screen
         try:
             _set_window_app_id(hwnd, icon)
         except Exception as exc:
@@ -3140,6 +3171,8 @@ def _set_window_icon() -> None:
         style = u.GetWindowLongW(hwnd, GWL_STYLE)
         u.SetWindowLongW(hwnd, GWL_STYLE, _as_long(style & ~WS_CAPTION & ~0x00040000))  # also no thick frame = no Windows shadow; the page draws its own resize edges
         u.SetWindowPos(hwnd, None, 0, 0, 0, 0, SWP_NOSIZE | SWP_NOMOVE | SWP_NOZORDER | SWP_FRAMECHANGED)
+        _REVEAL["styled"] = True
+        _reveal_window(hwnd, force=False)   # restyled: shown as soon as the page is painted too
         _start_size_guard(hwnd)
         _start_minimize_anim(hwnd)   # fly into the taskbar button (no-op if animations are off)
         # Windows 11 paints a lighter, see-through strip at the top (the hidden caption bar) and a colored
@@ -3297,8 +3330,8 @@ def main() -> None:
         js_api=api_obj,
         width=width,
         height=height,
-        x=x,
-        y=y,
+        x=-32000,   # created off-screen; _reveal_window puts it at (x, y) once the frame is removed
+        y=-32000,
         min_size=(760, 520),
         background_color="#060709",
         text_select=True,

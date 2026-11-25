@@ -2299,6 +2299,7 @@
     if (started || !window.pywebview || !window.pywebview.api) return;
     started = true;
     api = window.pywebview.api;
+    try { requestAnimationFrame(function () { setTimeout(function () { try { api.win_ready(); } catch (e) { /* ignore */ } }, 60); }); } catch (e) { /* ignore */ }
     try { if (window.auraTheme) window.auraTheme.set(window.auraTheme.get()); } catch (e) { /* ignore */ }
     api.get_version().then(function (v) { $("version").textContent = "v" + v; }).catch(noop);
     refreshSessions().then(function () {

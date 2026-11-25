@@ -412,21 +412,50 @@
   var basePlaceholder = input.placeholder || "Message Atlas...";
   var IDEAS = [
     "Build me a tiny website about my cat...", "Show me what takes the most space in my Downloads folder...",
-    "Give me a fun fact I can tell my friends...", "Plan a surprise date night...", "Ask me a silly question, I dare you...",
-    "Make me a small game to play...", "Find a dinner recipe using only rice and eggs...", "Teach me something cool in 30 seconds...",
-    "Write a poem about Monday...", "Why is my PC slow? Let's find out...", "Explain quantum physics like I'm five...",
-    "What should we build today?", "Teach me 5 useful Greek phrases...", "Help me politely say no to a plan...",
-    "Open YouTube and find a chill playlist..."
+    "Give me a fun fact I can tell my friends...", "Plan a surprise date night...",
+    "Ask me a silly question, I dare you...", "Make me a small game to play...",
+    "Find a dinner recipe using only rice and eggs...", "Teach me something cool in 30 seconds...",
+    "Write a poem about Monday...", "Why is my PC slow? Let's find out...",
+    "Explain quantum physics like I'm five...", "What should we build today?",
+    "Teach me 5 useful Greek phrases...", "Help me politely say no to a plan...",
+    "Open YouTube and find a chill playlist...", "Invent a board game I can play with a pen and paper...",
+    "Tell me a riddle and don't give the answer yet...", "Help me write a funny text to cheer up a friend...",
+    "Suggest 5 weekend plans that cost almost nothing...", "Make me a 10-minute workout I can do at home...",
+    "Explain how the internet actually works...", "Give me a random skill I can learn this week...",
+    "Write a short bedtime story about a robot...", "Quiz me on world capitals...",
+    "Plan a 3-day trip to somewhere I've never been...", "Teach me how to cook the perfect omelette...",
+    "Roast my taste in music, gently...", "What are some good habits to start today?",
+    "Create a meal plan for the week...", "Help me name my future cat...",
+    "Tell me about a historical event most people don't know...", "Write me a motivational speech for a Monday...",
+    "Show me how big my biggest files are...", "Give me a tongue twister and let's see if I can say it...",
+    "Explain a confusing word in simple terms...", "Make a tiny website that shows a countdown...",
+    "Help me pick a movie for tonight...", "Teach me basic chess opening ideas...",
+    "Write a haiku about coffee...", "What would a perfect day look like for me?",
+    "Give me a 5-minute brain teaser...", "Find a calm study playlist for me...",
+    "Explain a science fact that sounds fake but is true...", "Help me write a polite email to say I'll be late...",
+    "Suggest a creative project for a rainy day...", "Teach me 5 useful Spanish phrases for travel...",
+    "Tell me a joke only a programmer would get...", "Help me plan a small birthday surprise...",
+    "What should I learn first to start coding?", "Describe an animal I've probably never heard of...",
+    "Give me a challenge to complete in 15 minutes..."
   ];
   var emptyIdea = "";
+  // a shuffled "bag": every idea is shown once before any repeats, never the same twice in a row, remembered between starts
   function pickIdea() {
-    var p = emptyIdea;
-    for (var i = 0; i < 6 && p === emptyIdea; i++) p = IDEAS[Math.floor(Math.random() * IDEAS.length)];
-    return p;
+    var bag = [], last = "";
+    try { bag = JSON.parse(localStorage.getItem("atlasIdeaBag") || "[]"); last = localStorage.getItem("atlasIdeaLast") || ""; } catch (e) { bag = []; }
+    bag = bag.filter(function (i) { return typeof i === "number" && i >= 0 && i < IDEAS.length; });
+    if (!bag.length) {
+      bag = IDEAS.map(function (_, i) { return i; });
+      for (var i = bag.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)); var t = bag[i]; bag[i] = bag[j]; bag[j] = t; }
+      if (IDEAS[bag[bag.length - 1]] === last && bag.length > 1) bag.unshift(bag.pop());   // the next one to be taken is not the last shown
+    }
+    var idx = bag.pop();
+    try { localStorage.setItem("atlasIdeaBag", JSON.stringify(bag)); localStorage.setItem("atlasIdeaLast", IDEAS[idx]); } catch (e) { /* ignore */ }
+    return IDEAS[idx];
   }
   function paintPlaceholder() {
     var want;
-    if (messagesEl.querySelector(".msg")) { emptyIdea = ""; want = basePlaceholder.replace(/^Message Aura/, "Reply to Atlas"); }
+    if (messagesEl.querySelector(".msg")) { emptyIdea = ""; want = basePlaceholder.replace(/^Message (Aura|Atlas)/, "Reply to Atlas"); }
     else { if (!emptyIdea) emptyIdea = pickIdea(); want = emptyIdea; }
     if (input.placeholder !== want) input.placeholder = want;
   }

@@ -116,6 +116,10 @@ AURA_PERSONA = " ".join((
     "for example do.bat \"What is shown in the Atlas window? Is a video playing?\" --see-aura. Do this to check what you opened instead of saying you cannot see it.",
     "To play, pause, resume or mute the video in the Atlas browser, run do.bat \"pause the video\" (or play / resume / mute). It really controls the player and reports the true state. "
     "Never tell the user you paused or played something unless that result says so.",
+    "When the user sends a link to a VIDEO (TikTok, Instagram, YouTube, X, Facebook...) and wants to know what is in it, or says watch/analyze/summarize it, "
+    "run do.bat \"watch this video and tell me what happens: <the link>\" (it downloads the video, looks at pictures from it and listens to the speech). "
+    "Never try to read such a link with a web fetch. Then answer only from what it reports; if it says it could not open the link, say so plainly. "
+    "For any other link, run do.bat \"read this page and summarize it: <the link>\".",
     "To PLAY something on YouTube run do.bat \"play <what> on YouTube\": it picks a video that really plays, opens it in Atlas and checks the screen itself, "
     "and tries another result if one shows an error. Never open a YouTube link yourself without that. If you open anything else and it matters that it worked, check with --see-aura.",
     "To open a website, use do.bat (it opens the site inside Atlas); never start a browser yourself. A website you built is ALREADY shown in the Atlas preview pane: never open it in the normal browser, never run start/Start-Process/explorer on it, and do not say it was opened in the browser unless the user asked.",
@@ -2675,8 +2679,10 @@ ANIM_SECONDS = 0.25
 
 
 def _anim_enabled() -> bool:
-    """Windows' "Animation effects" setting (off = no animation at all)."""
+    """Windows' "Animation effects" setting (off = no animation at all). A file named no_anim.txt next to app/ also turns it off."""
     try:
+        if (ROOT / "no_anim.txt").exists():
+            return False
         on = ctypes.c_int(0)
         ctypes.windll.user32.SystemParametersInfoW(0x1042, 0, ctypes.byref(on), 0)   # SPI_GETCLIENTAREAANIMATION
         return bool(on.value)
@@ -2904,13 +2910,20 @@ def _anim_thread(hwnd) -> None:
             return (cx - ew / 2, cy - eh / 2, cx + ew / 2, cy + eh / 2)
 
         def flight_box(full):
-            """The ghost covers the window and its whole screen (so the end point may move a little in flight)."""
+            """The ghost covers the window and the taskbar button (end point may move a little in flight). It must NEVER
+            cover the whole screen: Windows takes a screen-sized topmost window for a full-screen app and silences
+            notifications (the bell icon next to the clock), so the box is kept 12 px inside the screen."""
             parts = [tuple(int(v) for v in full)]
+            ic = icon_rect(full)
+            if ic:
+                pad = 40
+                parts.append((int(ic[0]) - pad, int(ic[1]) - pad, int(ic[2]) + pad, int(ic[3]) + pad))
+            box = [min(p[0] for p in parts), min(p[1] for p in parts), max(p[2] for p in parts), max(p[3] for p in parts)]
             m = monitor_of(full)
             if m:
-                parts.append(m)
-            return (min(p[0] for p in parts), min(p[1] for p in parts),
-                    max(p[2] for p in parts), max(p[3] for p in parts))
+                inset = 12
+                box = [max(box[0], m[0] + inset), max(box[1], m[1] + inset), min(box[2], m[2] - inset), min(box[3], m[3] - inset)]
+            return tuple(box)
 
         def ease_in_out(p):
             return 4 * p * p * p if p < 0.5 else 1 - (-2 * p + 2) ** 3 / 2
@@ -3233,6 +3246,37 @@ def _keep_links_inside(api_obj) -> None:
         _log("keep_links_inside failed: " + repr(exc))
 
 
+EXTRA_PACKAGES = (("yt_dlp", "yt-dlp"), ("faster_whisper", "faster-whisper"))   # video watching; an Update brings the code, this brings these
+EXTRAS_STAMP = ROOT / "logs" / "extras_try.txt"
+
+
+def _install_extras() -> None:
+    """Quietly install the packages newer features need, once a day at most, only into this app's own .venv."""
+    try:
+        if Path(CHILD_PY).parent.parent.name != ".venv":
+            return
+        missing = []
+        for mod, pkg in EXTRA_PACKAGES:
+            _o, _e, code, _r = no_window.run_capture([CHILD_PY, "-c", "import " + mod], 60)
+            if code != 0:
+                missing.append(pkg)
+        if not missing:
+            return
+        try:
+            if time.time() - float(EXTRAS_STAMP.read_text().strip()) < 24 * 3600:
+                return
+        except (OSError, ValueError):
+            pass
+        EXTRAS_STAMP.parent.mkdir(parents=True, exist_ok=True)
+        EXTRAS_STAMP.write_text(str(time.time()))
+        _log("installing extra packages: " + ", ".join(missing))
+        _o, err, code, _r = no_window.run_capture(
+            [CHILD_PY, "-m", "pip", "install", "--disable-pip-version-check", "-q"] + missing, 900)
+        _log("extra packages " + ("installed" if code == 0 else "failed: " + (err.strip().splitlines() or ["?"])[-1][:200]))
+    except Exception as exc:
+        _log("extras failed: " + repr(exc))
+
+
 def _read_ollama_url() -> None:
     """A PC that uses another PC's graphics card keeps the address in ollama_url.txt."""
     try:
@@ -3312,6 +3356,7 @@ def main() -> None:
             pass
     _read_ollama_url()
     _ensure_shortcut()
+    threading.Thread(target=_install_extras, daemon=True).start()   # video watching needs two packages
 
     width, height, x, y = _window_geometry()
     api_obj = Api()

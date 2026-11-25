@@ -1078,6 +1078,39 @@ class Api:
         except Exception as exc:
             _log("win_theme failed: " + repr(exc))
 
+    def spell_check(self, text, mode="word") -> dict:
+        """Spelling help from the local helper. mode 'word': up to 5 corrections for one word ([] if it is spelled right);
+        mode 'all': the same text with only spelling mistakes fixed."""
+        try:
+            import requests
+            text = str(text or "")[:4000]
+            if not text.strip():
+                return {"suggestions": [], "text": text}
+            if mode == "word":
+                ask = ('Is the English word "%s" misspelled? If it is spelled correctly (or is a name, slang or a code word) '
+                       'answer exactly []. If it is a typo, answer with a JSON array of up to 5 likely correct words, best '
+                       'first. Answer with the JSON array only.' % text.replace('"', ""))
+            else:
+                ask = ("Fix only the spelling mistakes in this text. Keep the wording, punctuation, line breaks and language "
+                       "exactly; do not rephrase. Answer with the corrected text only, nothing else.\n\n" + text)
+            url = os.environ.get("OLLAMA_URL", "http://localhost:11434").rstrip("/")
+            try:
+                model = (ROOT / "model.txt").read_text(encoding="utf-8").strip() or "qwen3.8:27b"
+            except OSError:
+                model = os.environ.get("AGENT_MODEL") or "qwen3.8:27b"
+            body = {"model": model, "stream": False, "think": False,
+                    "options": {"temperature": 0, "num_predict": 60 if mode == "word" else 1200},
+                    "messages": [{"role": "user", "content": ask}]}
+            out = str(requests.post(url + "/api/chat", json=body, timeout=(5, 120)).json().get("message", {}).get("content", "")).strip()
+            if mode == "word":
+                m = re.search(r"\[.*?\]", out, re.S)
+                arr = json.loads(m.group(0)) if m else []
+                return {"suggestions": [str(x) for x in arr if str(x).lower() != text.lower()][:5]}
+            return {"text": out or text}
+        except Exception as exc:
+            _log("spell_check failed: " + repr(exc))
+            return {"suggestions": [], "text": str(text or "")}
+
     def clipboard_text(self) -> str:
         """Plain text on the Windows clipboard ('' if none); the page cannot always read it itself."""
         try:

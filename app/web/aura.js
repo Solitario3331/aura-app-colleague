@@ -1902,11 +1902,13 @@
     });
   })();
 
-  // right-click menu: Cut / Copy / Paste / Select all (the plain window has none)
+  // right-click menu (inputs): spelling suggestions, Undo/Redo, Cut/Copy/Paste/Select all, Fix spelling of the whole box
   (function () {
     var st = document.createElement("style");
-    st.textContent = "#ctxMenu{position:fixed;z-index:2147483600;min-width:150px;padding:4px;border-radius:8px;background:var(--overlay,#1a1b1f);border:1px solid var(--line2,rgba(255,255,255,.12));box-shadow:0 8px 24px rgba(0,0,0,.35);font:13px var(--font-ui,system-ui,sans-serif);color:var(--text,#ddd)}#ctxMenu button{display:block;width:100%;text-align:left;padding:6px 12px;border:0;border-radius:5px;background:none;color:inherit;font:inherit;cursor:default}#ctxMenu button:hover:not(:disabled){background:var(--hover,rgba(255,255,255,.08))}#ctxMenu button:disabled{opacity:.4}";
+    st.textContent = "#ctxMenu{position:fixed;z-index:2147483600;min-width:210px;padding:5px;border-radius:10px;background:var(--overlay,#1a1b1f);border:1px solid var(--line2,rgba(255,255,255,.12));box-shadow:0 12px 32px rgba(0,0,0,.38),0 2px 6px rgba(0,0,0,.2);font:13px/1.2 var(--font-ui,system-ui,sans-serif);color:var(--text,#ddd);animation:ctxIn .1s ease-out;user-select:none}@keyframes ctxIn{from{opacity:0;transform:translateY(-3px) scale(.98)}to{opacity:1;transform:none}}#ctxMenu button{display:flex;align-items:center;justify-content:space-between;gap:24px;width:100%;text-align:left;padding:7px 10px;border:0;border-radius:6px;background:none;color:inherit;font:inherit;cursor:default}#ctxMenu button:hover:not(:disabled){background:var(--hover,rgba(255,255,255,.08));color:var(--hi,#fff)}#ctxMenu button:disabled{opacity:.38}#ctxMenu kbd{font:11px var(--font-ui,system-ui,sans-serif);color:var(--dim,#888);letter-spacing:.02em}#ctxMenu hr{border:0;border-top:1px solid var(--line,rgba(255,255,255,.08));margin:5px 4px}#ctxMenu .ctx-sug{font-weight:600;color:var(--acc-text,var(--acc,#8af))}#ctxMenu .ctx-note{padding:6px 10px;color:var(--dim,#888);font-size:12px}";
     document.head.appendChild(st);
+    var inp = document.getElementById("input");
+    if (inp) { inp.setAttribute("spellcheck", "true"); inp.setAttribute("lang", "en"); }
     var menu = null;
     function close() { if (menu) { menu.remove(); menu = null; } }
     function insert(el, text) {
@@ -1918,6 +1920,15 @@
         el.dispatchEvent(new Event("input", { bubbles: true }));
       }
     }
+    function wordAt(el) {
+      if (!("value" in el)) return null;
+      var v = el.value, a = el.selectionStart, b = el.selectionEnd;
+      if (a !== b) { var s = v.slice(a, b); return /^[A-Za-z'’-]{2,40}$/.test(s) ? { a: a, b: b, w: s } : null; }
+      var l = a, r = a;
+      while (l > 0 && /[A-Za-z'’-]/.test(v[l - 1])) l--;
+      while (r < v.length && /[A-Za-z'’-]/.test(v[r])) r++;
+      return r - l >= 2 ? { a: l, b: r, w: v.slice(l, r) } : null;
+    }
     document.addEventListener("contextmenu", function (e) {
       var t = e.target, editable = !!(t && (t.tagName === "TEXTAREA" || (t.tagName === "INPUT" && /^(text|search|url|email|password|)$/i.test(t.type)) || t.isContentEditable));
       var sel = String(window.getSelection ? window.getSelection() : "");
@@ -1925,26 +1936,61 @@
       if (!editable && !sel) return;
       e.preventDefault();
       close();
+      var api = window.pywebview && window.pywebview.api;
       menu = document.createElement("div");
       menu.id = "ctxMenu";
-      function item(label, enabled, fn) {
+      var top = document.createElement("div");   // spelling suggestions land here when they arrive
+      menu.appendChild(top);
+      function item(label, hint, enabled, fn, cls) {
         var b = document.createElement("button");
-        b.type = "button"; b.textContent = label; b.disabled = !enabled;
+        b.type = "button"; b.disabled = !enabled;
+        var s = document.createElement("span"); s.textContent = label; if (cls) s.className = cls;
+        b.appendChild(s);
+        if (hint) { var k = document.createElement("kbd"); k.textContent = hint; b.appendChild(k); }
         b.addEventListener("mousedown", function (ev) { ev.preventDefault(); });
         b.addEventListener("click", function () { close(); fn(); });
-        menu.appendChild(b);
+        return b;
       }
-      var copyIt = function () {
-        if (!document.execCommand("copy") && navigator.clipboard) navigator.clipboard.writeText(sel).catch(function () {});
-      };
-      if (editable) item("Cut", !!sel, function () { t.focus(); if (!document.execCommand("cut") && navigator.clipboard) { navigator.clipboard.writeText(sel).catch(function () {}); document.execCommand("delete"); } });
-      item("Copy", !!sel, copyIt);
-      if (editable) item("Paste", true, function () {
-        var api = window.pywebview && window.pywebview.api;
-        if (api && api.clipboard_text) api.clipboard_text().then(function (s) { if (s) insert(t, s); }).catch(function () {});
-        else if (navigator.clipboard && navigator.clipboard.readText) navigator.clipboard.readText().then(function (s) { if (s) insert(t, s); }).catch(function () {});
-      });
-      if (editable) item("Select all", true, function () { t.focus(); if (t.select) t.select(); else document.execCommand("selectAll"); });
+      function add(b) { menu.appendChild(b); }
+      function rule() { menu.appendChild(document.createElement("hr")); }
+      if (editable) {
+        add(item("Undo", "Ctrl+Z", true, function () { t.focus(); document.execCommand("undo"); }));
+        add(item("Redo", "Ctrl+Y", true, function () { t.focus(); document.execCommand("redo"); }));
+        rule();
+        add(item("Cut", "Ctrl+X", !!sel, function () { t.focus(); if (!document.execCommand("cut") && navigator.clipboard) { navigator.clipboard.writeText(sel).catch(function () {}); document.execCommand("delete"); } }));
+      }
+      add(item("Copy", "Ctrl+C", !!sel, function () { if (!document.execCommand("copy") && navigator.clipboard) navigator.clipboard.writeText(sel).catch(function () {}); }));
+      if (editable) {
+        add(item("Paste", "Ctrl+V", true, function () {
+          if (api && api.clipboard_text) api.clipboard_text().then(function (s) { if (s) insert(t, s); }).catch(function () {});
+          else if (navigator.clipboard && navigator.clipboard.readText) navigator.clipboard.readText().then(function (s) { if (s) insert(t, s); }).catch(function () {});
+        }));
+        add(item("Select all", "Ctrl+A", true, function () { t.focus(); if (t.select) t.select(); else document.execCommand("selectAll"); }));
+        if (api && api.spell_check && "value" in t && t.value.trim()) {
+          rule();
+          add(item("Fix spelling in the whole box", "", true, function () {
+            var orig = t.value;
+            api.spell_check(orig, "all").then(function (r) {
+              if (r && r.text && r.text !== orig && t.value === orig) { t.focus(); t.select(); insert(t, r.text); }
+            }).catch(function () {});
+          }));
+          var wd = wordAt(t);
+          if (wd) {
+            var note = document.createElement("div"); note.className = "ctx-note"; note.textContent = "Checking “" + wd.w + "”…";
+            top.appendChild(note);
+            api.spell_check(wd.w, "word").then(function (r) {
+              if (!menu || !top.isConnected) return;
+              top.textContent = "";
+              var list = (r && r.suggestions) || [];
+              if (!list.length) { return; }
+              list.slice(0, 5).forEach(function (sg) {
+                top.appendChild(item(sg, "", true, function () { t.focus(); t.setSelectionRange(wd.a, wd.b); insert(t, sg); }, "ctx-sug"));
+              });
+              top.appendChild(document.createElement("hr"));
+            }).catch(function () { top.textContent = ""; });
+          }
+        }
+      }
       document.body.appendChild(menu);
       var r = menu.getBoundingClientRect();
       menu.style.left = Math.max(4, Math.min(e.clientX, innerWidth - r.width - 4)) + "px";

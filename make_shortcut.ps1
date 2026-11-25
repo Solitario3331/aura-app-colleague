@@ -1,5 +1,5 @@
 param([switch]$IfMissing)
-# Puts an "Aura" icon on the desktop (and in the Start menu) that opens the app directly.
+# Puts an "Atlas" icon on the desktop (and in the Start menu) that opens the app directly.
 # The shortcut carries the Aura icon AND the app id "Aura.App" (same id the app sets on itself),
 # so the taskbar shows the Aura icon and groups the running window with this shortcut.
 # -IfMissing: only create missing shortcuts, and repair old ones that lack the id or point elsewhere.
@@ -76,7 +76,11 @@ $changed = $false
 $places = @([Environment]::GetFolderPath('Desktop'), [Environment]::GetFolderPath('Programs'))
 foreach ($dir in $places) {
   if (-not $dir -or -not (Test-Path $dir)) { continue }
-  $lnk = Join-Path $dir 'Aura.lnk'
+  $lnk = Join-Path $dir 'Atlas.lnk'
+  $oldLnk = Join-Path $dir 'Aura.lnk'   # the app used to be called Aura: remove its own old shortcut (same target only)
+  if (Test-Path $oldLnk) {
+    try { if ((New-Object -ComObject WScript.Shell).CreateShortcut($oldLnk).TargetPath -ieq $py) { Remove-Item $oldLnk -Force } } catch { }
+  }
   if ($IfMissing -and (Test-Path $lnk)) {
     $ok = $false
     try {
@@ -91,7 +95,7 @@ foreach ($dir in $places) {
   $s.Arguments = '"' + $app + '"'
   $s.WorkingDirectory = $root
   $s.IconLocation = $ico + ',0'
-  $s.Description = 'Aura'
+  $s.Description = 'Atlas'
   $s.Save()
   if ($haveId) {
     try { [AuraLnk]::SetId($lnk, $appId) } catch { Write-Output ('Could not set the app id on ' + $lnk) }

@@ -166,6 +166,7 @@ AURA_RULES = " ".join((
     "To pause, resume or mute the video in the Atlas browser use the control_media tool and report only what its result says.",
     "To PLAY music or a video on YouTube, use the play_youtube tool (it picks a video that really plays and checks the screen).",
     "If the user sends a video link (TikTok, Instagram, X, YouTube...) and wants to know what is in it, use the watch_video tool and describe only what its result says.",
+    "If the user sends any other link and wants to know what is on it, use the read_link tool and answer only from what it returns; never open the page just to read it.",
     "To open a website (for example YouTube) when the user ASKS to open or browse one, use the open_website tool",
     "with the full https:// address; never open a browser with commands.",
     "Open a website or search the web ONLY when the user explicitly asks to browse, open a site or look something up online.",
@@ -190,6 +191,12 @@ if IN_AURA:
         "Play music or a video on YouTube inside the Atlas app. Give WHAT to play (a few words, for example 'chill lofi playlist') "
         "or a YouTube link. It finds a video that really plays and checks the screen, and tries the next one if there is an error. "
         "ALWAYS use this when the user wants to play, listen to or watch something on YouTube.", what=1))
+    TOOLS.append(_tool(
+        "read_link",
+        "Read a web page from a link (article, blog, shop page, documentation, GitHub page, forum post ...) when the user sends "
+        "a link and wants to know what is on it, a summary, or an answer from it. Returns the title, headings and main text. "
+        "Read-only. For a video link it automatically watches the video instead. Answer only from what it returns.",
+        url=1))
     TOOLS.append(_tool(
         "watch_video",
         "Watch a video from a link (TikTok, Instagram, X, YouTube, Facebook ...) when the user sends a link and wants to know "
@@ -490,6 +497,13 @@ def run_tool(name: str, args: dict) -> str:
         if name == "watch_video":
             import video_watch
             return video_watch.watch(str(args.get("url", "")), MODEL, OLLAMA_URL, log)
+        if name == "read_link":
+            import link_read
+            u = str(args.get("url", ""))
+            if link_read.is_video_link(u):   # a video on a social/video site: watch it, do not scrape the page
+                import video_watch
+                return video_watch.watch(u, MODEL, OLLAMA_URL, log)
+            return link_read.read(u)
         if name == "open_website":
             u = str(args.get("url", ""))
             if re.search(r"youtube\.com/watch|youtu\.be/", u, re.I):  # a YouTube video link: never open one that cannot play

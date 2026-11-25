@@ -237,7 +237,7 @@
 
   /* ---------- pictures inside answers: a markdown image or a path to a picture file shows the picture ---------- */
   var picCache = {};
-  var IMG_PATH_RE = /!\[[^\]\n]*\]\(\s*<?([^)>\n]+?)>?\s*\)|((?:[A-Za-z]:\\|file:\/\/\/)[^\\\/:*?"<>|\r\n`]+(?:[\\\/][^\\\/:*?"<>|\r\n`]+)*\.(?:png|jpe?g|gif|webp|bmp))/gi;
+  var IMG_PATH_RE = /!\[[^\]\n]*\]\(\s*<?([^)>\n]+?)>?\s*\)|((?:[A-Za-z]:\\|file:\/\/\/)[^\\\/:*?"<>|\r\n`]+(?:[\\\/][^\\\/:*?"<>|\r\n`]+)*\.(?:png|jpe?g|gif|webp|bmp|mp4|webm|mov|m4v|mkv))/gi;
 
   /* ---------- picture viewer: click a picture in the chat to inspect it (wheel = zoom, drag = move) ---------- */
   function openLightbox(url) {
@@ -295,43 +295,105 @@
     document.body.appendChild(box);
     if (im.complete && im.naturalWidth) fitIt(); else im.addEventListener("load", fitIt);
   }
+  var picBad = {}, picPending = {};
+  function fmtBytes(n) { n = Number(n) || 0; return n >= 1048576 ? (n / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(n / 1024)) + " KB"; }
+  function getMedia(path, force, cb) {
+    if (!force && picCache[path] && picCache[path].url) { cb(picCache[path]); return; }
+    if (!force && picBad[path] && Date.now() - picBad[path] < 8000) { cb(null); return; }   // do not ask again on every streamed chunk
+    if (picPending[path]) { picPending[path].push(cb); return; }
+    picPending[path] = [cb];
+    function done(r) {
+      var cbs = picPending[path] || []; delete picPending[path];
+      if (r && r.url) { picCache[path] = r; delete picBad[path]; } else { delete picCache[path]; picBad[path] = Date.now(); r = null; }
+      cbs.forEach(function (f) { f(r); });
+    }
+    if (!api || !api.media_info) { done(null); return; }
+    api.media_info(path).then(done).catch(function () { done(null); });
+  }
+  var MEDIA_ICO_EXPAND = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6"/><path d="M10 20H4v-6"/><path d="M20 4l-7 7"/><path d="M4 20l7-7"/></svg>';
+  var MEDIA_ICO_PLAY = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5l11 7-11 7z"/></svg>';
   function imageBlock(path) {
-    var fig = document.createElement("div"); fig.className = "chat-img-wrap";
-    var im = document.createElement("img"); im.className = "chat-img"; im.alt = "Picture";
-    im.title = "Click to open and zoom";
-    im.addEventListener("click", function () { if (im.src) openLightbox(im.src); });
-    fig.appendChild(im);
-    function fail() {
-      fig.textContent = "";
-      var n = document.createElement("div"); n.className = "chat-img-miss";
-      n.textContent = "Could not show this picture: " + String(path).split(/[\\\/]/).pop();
-      fig.appendChild(n);
+    var name = String(path).split(/[\\\/]/).pop();
+    var card = document.createElement("div"); card.className = "media-card is-loading";
+    var frame = document.createElement("div"); frame.className = "media-frame";
+    var bar = document.createElement("div"); bar.className = "media-bar";
+    var meta = document.createElement("span"); meta.className = "media-meta"; meta.textContent = name; meta.title = path;
+    var acts = document.createElement("span"); acts.className = "media-acts";
+    bar.appendChild(meta); card.appendChild(frame); card.appendChild(bar); card.appendChild(acts);
+    var cur = null, isVid = /\.(mp4|webm|mov|m4v|mkv)$/i.test(name);
+    function mkBtn(label, svg, fn) {
+      var b = document.createElement("button"); b.type = "button"; b.className = "media-btn";
+      b.title = label; b.setAttribute("aria-label", label);
+      b.innerHTML = svg;
+      b.addEventListener("click", function (e) { e.stopPropagation(); fn(b); });
+      acts.appendChild(b); return b;
     }
-    var c = picCache[path];
-    if (c && c.url) { im.src = c.url; return fig; }
-    if (c && c.bad) { fail(); return fig; }
-    if (!c) {
-      c = picCache[path] = { waiting: [] };
-      var go = function () {
-        if (!api || !api.read_image) { delete picCache[path]; c.waiting.forEach(function (w) { w.fail(); }); return; }
-        api.read_image(path).then(function (r) {
-          if (r && r.url) { c.url = r.url; c.waiting.forEach(function (w) { w.ok(r.url); }); }
-          else { c.bad = true; c.waiting.forEach(function (w) { w.fail(); }); }
-        }).catch(function () { c.bad = true; c.waiting.forEach(function (w) { w.fail(); }); });
-      };
-      c.waiting.push({ ok: function (u) { im.src = u; }, fail: fail });
-      go();
-      return fig;
+    function copyIt(b) {
+      var old = b.innerHTML;
+      if (!api || !api.copy_media) { toast("Could not copy."); return; }
+      api.copy_media(path).then(function (r) {
+        var ok = !!(r && r.ok);
+        if (ok) { b.innerHTML = ICO.ok; b.classList.add("ok"); }
+        toast(ok ? (isVid ? "Video copied. Paste it in a folder or chat." : "Picture copied.") : "Could not copy it.");
+        setTimeout(function () { b.innerHTML = old; b.classList.remove("ok"); }, 1600);
+      }).catch(function () { toast("Could not copy it."); });
     }
-    c.waiting.push({ ok: function (u) { im.src = u; }, fail: fail });
-    return fig;
+    function retryIt() { load(true); }
+    function buttons(failed) {
+      acts.textContent = "";
+      if (failed) return;
+      mkBtn("Copy", ICO.copy, copyIt);
+      if (!isVid) mkBtn("Expand", MEDIA_ICO_EXPAND, function () { if (cur) openLightbox(cur.url); });
+      if (isVid) mkBtn("Open", MEDIA_ICO_PLAY, function () { if (api && api.open_media) api.open_media(path); });
+      mkBtn("Retry", ICO.redo, retryIt);
+    }
+    function fail(msg) {
+      card.classList.remove("is-loading"); card.classList.add("is-failed");
+      frame.textContent = "";
+      var box = document.createElement("div"); box.className = "media-fail";
+      var t = document.createElement("div"); t.textContent = msg; box.appendChild(t);
+      var again = document.createElement("button"); again.type = "button"; again.className = "media-btn";
+      again.innerHTML = "<span>Try again</span>"; again.addEventListener("click", retryIt); box.appendChild(again);
+      var ask = document.createElement("button"); ask.type = "button"; ask.className = "media-btn";
+      ask.innerHTML = "<span>Ask Aura to show it another way</span>";
+      ask.addEventListener("click", function () {
+        if (busy) { toast("Wait for Aura to finish first, or press Stop."); return; }
+        input.value = "The " + (isVid ? "video" : "picture") + " " + name + " did not show in the chat. Please show it another way.";
+        input.dispatchEvent(new Event("input")); send();
+      });
+      box.appendChild(ask);
+      if (isVid) { var op = document.createElement("button"); op.type = "button"; op.className = "media-btn"; op.innerHTML = "<span>Open in player</span>";
+        op.addEventListener("click", function () { if (api && api.open_media) api.open_media(path); }); box.appendChild(op); }
+      frame.appendChild(box); buttons(true);
+    }
+    function show(r) {
+      cur = r; isVid = r.kind === "video";
+      card.classList.remove("is-loading", "is-failed"); frame.textContent = "";
+      var el = document.createElement(isVid ? "video" : "img"); el.className = "media-el";
+      if (isVid) { el.controls = true; el.preload = "metadata"; el.setAttribute("playsinline", ""); }
+      else { el.alt = name; el.title = "Click to open and zoom"; el.addEventListener("click", function () { openLightbox(r.url); }); }
+      el.addEventListener("error", function () { fail(isVid ? "This video can't be played here." : "This picture can't be shown."); });
+      el.addEventListener(isVid ? "loadedmetadata" : "load", function () {
+        var w = isVid ? el.videoWidth : el.naturalWidth, h = isVid ? el.videoHeight : el.naturalHeight;
+        meta.textContent = name + " · " + (w && h ? w + "×" + h + " · " : "") + fmtBytes(r.size);
+      });
+      el.src = r.url; frame.appendChild(el);
+      meta.textContent = name + " · " + fmtBytes(r.size); buttons(false);
+    }
+    function load(force) {
+      card.classList.add("is-loading"); card.classList.remove("is-failed"); frame.textContent = "";
+      acts.textContent = "";
+      getMedia(path, force, function (r) { if (r) show(r); else fail("Could not find this " + (isVid ? "video" : "picture") + "."); });
+    }
+    load(false);
+    return card;
   }
   function imagePathsIn(line) {
     var found = [], m;
     IMG_PATH_RE.lastIndex = 0;
     while ((m = IMG_PATH_RE.exec(line))) {
       var p = (m[1] || m[2] || "").trim();
-      if (p && /\.(png|jpe?g|gif|webp|bmp)$/i.test(p) && found.indexOf(p) < 0) found.push(p);
+      if (p && /\.(png|jpe?g|gif|webp|bmp|mp4|webm|mov|m4v|mkv)$/i.test(p) && found.indexOf(p) < 0) found.push(p);
     }
     return found;
   }
@@ -2121,6 +2183,7 @@
     if (started || !window.pywebview || !window.pywebview.api) return;
     started = true;
     api = window.pywebview.api;
+    try { if (window.auraTheme) window.auraTheme.set(window.auraTheme.get()); } catch (e) { /* ignore */ }
     api.get_version().then(function (v) { $("version").textContent = "v" + v; }).catch(noop);
     refreshSessions().then(function () {
       if (sessions.length && sessions[0].title === "New chat") return openSession(sessions[0].id);
@@ -2509,7 +2572,10 @@
   // theme: follows Windows ("auto") until the user picks light or dark; the choice is remembered
   var mq = window.matchMedia ? window.matchMedia("(prefers-color-scheme: light)") : null;
   function isLight() { var t = root.dataset.theme; return t === "light" || (t !== "dark" && !!mq && mq.matches); }
-  function paintTheme() { root.classList.toggle("is-light", isLight()); }
+  function paintTheme() {
+    root.classList.toggle("is-light", isLight());
+    try { if (window.pywebview && window.pywebview.api && window.pywebview.api.win_theme) window.pywebview.api.win_theme(isLight()); } catch (e) { /* ignore */ }
+  }
   function setTheme(t) {
     root.dataset.theme = t;
     try { localStorage.setItem("auraTheme", t); } catch (e) { /* ignore */ }

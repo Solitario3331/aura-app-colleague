@@ -553,6 +553,88 @@ class _PreviewHandler(http.server.SimpleHTTPRequestHandler):
         super().end_headers()
 
 
+_MEDIA_FILES: dict = {}
+_MEDIA_SRV: dict = {}
+
+
+class _MediaHandler(http.server.SimpleHTTPRequestHandler):
+    """Serves files that Aura registered (by a random token) on 127.0.0.1 only. Supports Range requests, which
+    video players need for seeking. Nothing else on the disk can be reached."""
+
+    def log_message(self, *args):
+        pass
+
+    def translate_path(self, path):
+        parts = urllib.parse.unquote(path.split("?", 1)[0]).split("/")
+        token = parts[2] if len(parts) > 2 and parts[1] == "m" else ""
+        return _MEDIA_FILES.get(token, os.devnull if os.name != "nt" else "NUL_NOT_A_FILE")
+
+    def end_headers(self):
+        self.send_header("Cache-Control", "no-store")
+        if not getattr(self, "_partial", False):
+            self.send_header("Accept-Ranges", "bytes")
+        super().end_headers()
+
+    def send_head(self):
+        path = self.translate_path(self.path)
+        if not os.path.isfile(path):
+            self.send_error(404)
+            return None
+        rng = self.headers.get("Range")
+        m = re.match(r"bytes=(\d*)-(\d*)$", (rng or "").strip())
+        if not m or not (m.group(1) or m.group(2)):
+            return super().send_head()
+        size = os.path.getsize(path)
+        if m.group(1) == "":
+            start, end = max(0, size - int(m.group(2))), size - 1
+        else:
+            start = int(m.group(1))
+            end = int(m.group(2)) if m.group(2) else size - 1
+        end = min(end, size - 1)
+        if start > end or start >= size:
+            self.send_error(416)
+            return None
+        f = open(path, "rb")
+        f.seek(start)
+        self._left, self._partial = end - start + 1, True
+        self.send_response(206)
+        self.send_header("Content-Type", self.guess_type(path))
+        self.send_header("Content-Range", "bytes %d-%d/%d" % (start, end, size))
+        self.send_header("Content-Length", str(end - start + 1))
+        self.end_headers()
+        return f
+
+    def copyfile(self, source, outputfile):
+        try:
+            left = getattr(self, "_left", None)
+            if left is None:
+                return super().copyfile(source, outputfile)
+            while left > 0:
+                buf = source.read(min(65536, left))
+                if not buf:
+                    break
+                outputfile.write(buf)
+                left -= len(buf)
+        except (ConnectionError, OSError):
+            pass   # the player closed the connection (it moved the slider): normal
+
+
+def _media_url(path: Path) -> str:
+    if "srv" not in _MEDIA_SRV:
+        srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), _MediaHandler)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        _MEDIA_SRV["srv"] = srv
+    token = None
+    for t, f in _MEDIA_FILES.items():
+        if f == str(path):
+            token = t
+            break
+    if token is None:
+        token = secrets.token_urlsafe(12)
+        _MEDIA_FILES[token] = str(path)
+    return "http://127.0.0.1:%d/m/%s/%s" % (_MEDIA_SRV["srv"].server_address[1], token, urllib.parse.quote(path.name))
+
+
 def _capture_aura_window(dest: Path) -> bool:
     """Save a picture of this Aura window (everything in it, including the preview pane) as a PNG. Windows only."""
     import struct
@@ -832,45 +914,102 @@ class Api:
             _log("delete_all_sessions failed: " + repr(exc))
         return n
 
-    def read_image(self, path) -> dict:
-        """Give the page a picture file so it can show it in the chat. Only picture files, only inside the
-        user folder, the project folder or the temp folder, at most 20 MB."""
-        try:
-            raw = str(path or "").strip()
-            if raw.lower().startswith("file:///"):
-                raw = raw[8:].replace("/", "\\")
-            p = Path(raw).expanduser().resolve()
-            mime = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif",
-                    ".webp": "image/webp", ".bmp": "image/bmp"}.get(p.suffix.lower())
-            if not mime:
-                return {"url": ""}
-            import tempfile
-            if not p.is_file():
-                # The assistant sometimes writes a slightly wrong folder: look for the same file name in the places
-                # pictures normally live and take the newest one.
-                home = Path.home()
-                found = []
-                for folder in (DROP_DIR, ROOT / "chats", ROOT / "logs", home / "Aura", home / "Desktop",
-                               home / "Downloads", home / "Pictures", home / "Pictures" / "Screenshots",
-                               Path(tempfile.gettempdir())):
+    _IMG_MIME = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif",
+                 ".webp": "image/webp", ".bmp": "image/bmp"}
+    _VID_EXT = {".mp4", ".webm", ".mov", ".m4v", ".mkv"}
+
+    def _resolve_media(self, path):
+        """The real picture/video file for a path the assistant wrote (or None). Only inside the user folder, the
+        project folder or the temp folder. A slightly wrong folder is fixed by looking for the same file name."""
+        raw = str(path or "").strip()
+        if raw.lower().startswith("file:///"):
+            raw = raw[8:].replace("/", "\\")
+        p = Path(raw).expanduser().resolve()
+        if p.suffix.lower() not in self._IMG_MIME and p.suffix.lower() not in self._VID_EXT:
+            return None
+        if not p.is_file():
+            home = Path.home()
+            found = []
+            deadline = time.monotonic() + 1.5   # never block the app: a short, shallow look only
+            for folder in (DROP_DIR, ROOT / "chats" / "_dropped", ROOT / "chats", ROOT / "logs", home / "Aura",
+                           home / "Desktop", home / "Downloads", home / "Pictures", home / "Videos",
+                           home / "Pictures" / "Screenshots", Path(tempfile.gettempdir())):
+                if time.monotonic() > deadline:
+                    break
+                for depth in (0, 1, 2):
                     try:
-                        for cand in folder.rglob(p.name):
+                        pattern = "/".join(["*"] * depth + [p.name])
+                        for cand in folder.glob(pattern):
                             if cand.is_file():
                                 found.append(cand)
                     except Exception:
                         pass
-                if not found:
-                    return {"url": ""}
-                p = max(found, key=lambda c: c.stat().st_mtime).resolve()
-            allowed = [Path.home().resolve(), ROOT.resolve(), Path(tempfile.gettempdir()).resolve()]
-            if not any(p == a or a in p.parents for a in allowed):
+                if found:
+                    break   # the first folder (in this order) that has it wins
+            if not found:
+                return None
+            p = max(found, key=lambda c: c.stat().st_mtime).resolve()
+        allowed = [Path.home().resolve(), ROOT.resolve(), Path(tempfile.gettempdir()).resolve()]
+        if not any(p == a or a in p.parents for a in allowed):
+            return None
+        return p
+
+    def media_info(self, path) -> dict:
+        """What the chat needs to show a picture or video card: url (data: for pictures, a local address for
+        videos), kind, name, size."""
+        try:
+            p = self._resolve_media(path)
+            if p is None:
                 return {"url": ""}
-            if p.stat().st_size > 20 * 1024 * 1024:
+            size = p.stat().st_size
+            if p.suffix.lower() in self._VID_EXT:
+                return {"url": _media_url(p), "kind": "video", "name": p.name, "size": size, "path": str(p)}
+            if size > 20 * 1024 * 1024:
                 return {"url": ""}
-            return {"url": "data:" + mime + ";base64," + base64.b64encode(p.read_bytes()).decode("ascii")}
+            return {"url": "data:" + self._IMG_MIME[p.suffix.lower()] + ";base64,"
+                    + base64.b64encode(p.read_bytes()).decode("ascii"),
+                    "kind": "image", "name": p.name, "size": size, "path": str(p)}
         except Exception as exc:
-            _log("read_image failed: " + repr(exc))
+            _log("media_info failed: " + repr(exc))
             return {"url": ""}
+
+    def read_image(self, path) -> dict:
+        r = self.media_info(path)
+        return {"url": r.get("url", "")} if r.get("kind") == "image" else {"url": ""}
+
+    def copy_media(self, path) -> dict:
+        """Put the picture on the clipboard (pastes as a picture) or the video file (pastes as a file)."""
+        try:
+            p = self._resolve_media(path)
+            if p is None:
+                return {"ok": False}
+            if p.suffix.lower() in self._VID_EXT:
+                script = "Set-Clipboard -Path $env:AURA_MEDIA"
+            else:
+                script = ("Add-Type -AssemblyName System.Windows.Forms,System.Drawing;"
+                          "$i=[System.Drawing.Image]::FromFile($env:AURA_MEDIA);"
+                          "[System.Windows.Forms.Clipboard]::SetImage($i);$i.Dispose()")
+            _o, err, rc, why = no_window.run_capture(
+                ["powershell", "-STA", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script], 25,
+                env=dict(os.environ, AURA_MEDIA=str(p)))
+            if rc != 0 or why:
+                _log("copy_media failed: " + repr(err)[:200])
+            return {"ok": rc == 0 and not why}
+        except Exception as exc:
+            _log("copy_media failed: " + repr(exc))
+            return {"ok": False}
+
+    def open_media(self, path) -> dict:
+        """Open the picture/video in the normal Windows app."""
+        try:
+            p = self._resolve_media(path)
+            if p is None:
+                return {"ok": False}
+            os.startfile(str(p))   # noqa: S606 (a picture/video file the user can see in the chat)
+            return {"ok": True}
+        except Exception as exc:
+            _log("open_media failed: " + repr(exc))
+            return {"ok": False}
 
     def save_dropped(self, name, data) -> dict:
         """Keep a copy of a dropped file so the assistant can read it. Returns its path."""
@@ -925,6 +1064,19 @@ class Api:
         if not (self._hwnd and u.IsWindow(self._hwnd)):
             self._hwnd = _find_window("Aura")
         return self._hwnd
+
+    def win_theme(self, light: bool) -> None:
+        """Paint the window's top strip + border in the page's color (light paper or dark)."""
+        try:
+            hwnd = self._main_hwnd()
+            if not hwnd:
+                return
+            col = 0xF2F5F6 if light else 0x090706   # COLORREF 0x00BBGGRR (#F6F5F2 / #060709)
+            dwm = ctypes.windll.dwmapi
+            for attr in (35, 34):   # DWMWA_CAPTION_COLOR, DWMWA_BORDER_COLOR
+                dwm.DwmSetWindowAttribute(hwnd, attr, ctypes.byref(ctypes.c_int(col)), 4)
+        except Exception as exc:
+            _log("win_theme failed: " + repr(exc))
 
     def win_drag(self) -> None:
         """Move the window with the mouse while the left button stays down (called when the top strip is pressed)."""

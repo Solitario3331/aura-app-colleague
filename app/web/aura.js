@@ -123,7 +123,7 @@
 
   /* ---------- pictures inside answers: a markdown image or a path to a picture file shows the picture ---------- */
   var picCache = {};
-  var IMG_PATH_RE = /!\[[^\]\n]*\]\(\s*<?([^)>\n]+?)>?\s*\)|((?:[A-Za-z]:\\|file:\/\/\/)[^\\\/:*?"<>|\r\n`]+(?:[\\\/][^\\\/:*?"<>|\r\n`]+)*\.(?:png|jpe?g|gif|webp|bmp))/gi;
+  var IMG_PATH_RE = /!\[[^\]\n]*\]\(\s*<?([^)>\n]+?)>?\s*\)|((?:[A-Za-z]:\\|file:\/\/\/)[^\\\/:*?"<>|\r\n`]+(?:[\\\/][^\\\/:*?"<>|\r\n`]+)*\.(?:png|jpe?g|gif|webp|bmp|mp4|webm|mov|m4v|mkv))/gi;
 
   /* ---------- picture viewer: click a picture in the chat to inspect it (wheel = zoom, drag = move) ---------- */
   function openLightbox(url) {
@@ -181,43 +181,105 @@
     document.body.appendChild(box);
     if (im.complete && im.naturalWidth) fitIt(); else im.addEventListener("load", fitIt);
   }
+  var picBad = {}, picPending = {};
+  function fmtBytes(n) { n = Number(n) || 0; return n >= 1048576 ? (n / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(n / 1024)) + " KB"; }
+  function getMedia(path, force, cb) {
+    if (!force && picCache[path] && picCache[path].url) { cb(picCache[path]); return; }
+    if (!force && picBad[path] && Date.now() - picBad[path] < 8000) { cb(null); return; }   // do not ask again on every streamed chunk
+    if (picPending[path]) { picPending[path].push(cb); return; }
+    picPending[path] = [cb];
+    function done(r) {
+      var cbs = picPending[path] || []; delete picPending[path];
+      if (r && r.url) { picCache[path] = r; delete picBad[path]; } else { delete picCache[path]; picBad[path] = Date.now(); r = null; }
+      cbs.forEach(function (f) { f(r); });
+    }
+    if (!api || !api.media_info) { done(null); return; }
+    api.media_info(path).then(done).catch(function () { done(null); });
+  }
+  var MEDIA_ICO_EXPAND = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6"/><path d="M10 20H4v-6"/><path d="M20 4l-7 7"/><path d="M4 20l7-7"/></svg>';
+  var MEDIA_ICO_PLAY = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5l11 7-11 7z"/></svg>';
   function imageBlock(path) {
-    var fig = document.createElement("div"); fig.className = "chat-img-wrap";
-    var im = document.createElement("img"); im.className = "chat-img"; im.alt = "Picture";
-    im.title = "Click to open and zoom";
-    im.addEventListener("click", function () { if (im.src) openLightbox(im.src); });
-    fig.appendChild(im);
-    function fail() {
-      fig.textContent = "";
-      var n = document.createElement("div"); n.className = "chat-img-miss";
-      n.textContent = "Could not show this picture: " + String(path).split(/[\\\/]/).pop();
-      fig.appendChild(n);
+    var name = String(path).split(/[\\\/]/).pop();
+    var card = document.createElement("div"); card.className = "media-card is-loading";
+    var frame = document.createElement("div"); frame.className = "media-frame";
+    var bar = document.createElement("div"); bar.className = "media-bar";
+    var meta = document.createElement("span"); meta.className = "media-meta"; meta.textContent = name; meta.title = path;
+    var acts = document.createElement("span"); acts.className = "media-acts";
+    bar.appendChild(meta); card.appendChild(frame); card.appendChild(bar); card.appendChild(acts);
+    var cur = null, isVid = /\.(mp4|webm|mov|m4v|mkv)$/i.test(name);
+    function mkBtn(label, svg, fn) {
+      var b = document.createElement("button"); b.type = "button"; b.className = "media-btn";
+      b.title = label; b.setAttribute("aria-label", label);
+      b.innerHTML = svg;
+      b.addEventListener("click", function (e) { e.stopPropagation(); fn(b); });
+      acts.appendChild(b); return b;
     }
-    var c = picCache[path];
-    if (c && c.url) { im.src = c.url; return fig; }
-    if (c && c.bad) { fail(); return fig; }
-    if (!c) {
-      c = picCache[path] = { waiting: [] };
-      var go = function () {
-        if (!api || !api.read_image) { delete picCache[path]; c.waiting.forEach(function (w) { w.fail(); }); return; }
-        api.read_image(path).then(function (r) {
-          if (r && r.url) { c.url = r.url; c.waiting.forEach(function (w) { w.ok(r.url); }); }
-          else { c.bad = true; c.waiting.forEach(function (w) { w.fail(); }); }
-        }).catch(function () { c.bad = true; c.waiting.forEach(function (w) { w.fail(); }); });
-      };
-      c.waiting.push({ ok: function (u) { im.src = u; }, fail: fail });
-      go();
-      return fig;
+    function copyIt(b) {
+      var old = b.innerHTML;
+      if (!api || !api.copy_media) { toast("Could not copy."); return; }
+      api.copy_media(path).then(function (r) {
+        var ok = !!(r && r.ok);
+        if (ok) { b.innerHTML = ICO.ok; b.classList.add("ok"); }
+        toast(ok ? (isVid ? "Video copied. Paste it in a folder or chat." : "Picture copied.") : "Could not copy it.");
+        setTimeout(function () { b.innerHTML = old; b.classList.remove("ok"); }, 1600);
+      }).catch(function () { toast("Could not copy it."); });
     }
-    c.waiting.push({ ok: function (u) { im.src = u; }, fail: fail });
-    return fig;
+    function retryIt() { load(true); }
+    function buttons(failed) {
+      acts.textContent = "";
+      if (failed) return;
+      mkBtn("Copy", ICO.copy, copyIt);
+      if (!isVid) mkBtn("Expand", MEDIA_ICO_EXPAND, function () { if (cur) openLightbox(cur.url); });
+      if (isVid) mkBtn("Open", MEDIA_ICO_PLAY, function () { if (api && api.open_media) api.open_media(path); });
+      mkBtn("Retry", ICO.redo, retryIt);
+    }
+    function fail(msg) {
+      card.classList.remove("is-loading"); card.classList.add("is-failed");
+      frame.textContent = "";
+      var box = document.createElement("div"); box.className = "media-fail";
+      var t = document.createElement("div"); t.textContent = msg; box.appendChild(t);
+      var again = document.createElement("button"); again.type = "button"; again.className = "media-btn";
+      again.innerHTML = "<span>Try again</span>"; again.addEventListener("click", retryIt); box.appendChild(again);
+      var ask = document.createElement("button"); ask.type = "button"; ask.className = "media-btn";
+      ask.innerHTML = "<span>Ask Aura to show it another way</span>";
+      ask.addEventListener("click", function () {
+        if (busy) { toast("Wait for Aura to finish first, or press Stop."); return; }
+        input.value = "The " + (isVid ? "video" : "picture") + " " + name + " did not show in the chat. Please show it another way.";
+        input.dispatchEvent(new Event("input")); send();
+      });
+      box.appendChild(ask);
+      if (isVid) { var op = document.createElement("button"); op.type = "button"; op.className = "media-btn"; op.innerHTML = "<span>Open in player</span>";
+        op.addEventListener("click", function () { if (api && api.open_media) api.open_media(path); }); box.appendChild(op); }
+      frame.appendChild(box); buttons(true);
+    }
+    function show(r) {
+      cur = r; isVid = r.kind === "video";
+      card.classList.remove("is-loading", "is-failed"); frame.textContent = "";
+      var el = document.createElement(isVid ? "video" : "img"); el.className = "media-el";
+      if (isVid) { el.controls = true; el.preload = "metadata"; el.setAttribute("playsinline", ""); }
+      else { el.alt = name; el.title = "Click to open and zoom"; el.addEventListener("click", function () { openLightbox(r.url); }); }
+      el.addEventListener("error", function () { fail(isVid ? "This video can't be played here." : "This picture can't be shown."); });
+      el.addEventListener(isVid ? "loadedmetadata" : "load", function () {
+        var w = isVid ? el.videoWidth : el.naturalWidth, h = isVid ? el.videoHeight : el.naturalHeight;
+        meta.textContent = name + " · " + (w && h ? w + "×" + h + " · " : "") + fmtBytes(r.size);
+      });
+      el.src = r.url; frame.appendChild(el);
+      meta.textContent = name + " · " + fmtBytes(r.size); buttons(false);
+    }
+    function load(force) {
+      card.classList.add("is-loading"); card.classList.remove("is-failed"); frame.textContent = "";
+      acts.textContent = "";
+      getMedia(path, force, function (r) { if (r) show(r); else fail("Could not find this " + (isVid ? "video" : "picture") + "."); });
+    }
+    load(false);
+    return card;
   }
   function imagePathsIn(line) {
     var found = [], m;
     IMG_PATH_RE.lastIndex = 0;
     while ((m = IMG_PATH_RE.exec(line))) {
       var p = (m[1] || m[2] || "").trim();
-      if (p && /\.(png|jpe?g|gif|webp|bmp)$/i.test(p) && found.indexOf(p) < 0) found.push(p);
+      if (p && /\.(png|jpe?g|gif|webp|bmp|mp4|webm|mov|m4v|mkv)$/i.test(p) && found.indexOf(p) < 0) found.push(p);
     }
     return found;
   }
@@ -2364,69 +2426,6 @@
     }
     if (document.readyState === "complete") hide(); else window.addEventListener("load", hide);
     setTimeout(hide, 6000); // failsafe: never stay on the loading screen
-  })();
-
-  /* Random slices, shifts, jitter and scrambled letters in quick bursts (stops when the splash is gone). */
-  (function () {
-    var n = document.querySelector("#splash .name");
-    if (!n || calmMotion) return;
-    var base = n.getAttribute("data-text") || "AURA", junk = "#@%&$?/|<>01*+=";
-    var tint = ["#ffffff", "#05d9e8", "#ff2a6d", "#fcee0a"], letters = [];
-    n.textContent = "";
-    base.split("").forEach(function (ch) { var sp = document.createElement("span"); sp.textContent = ch; n.appendChild(sp); letters.push(sp); });
-    function r(a, b) { return a + Math.random() * (b - a); }
-    function junkChar() { return junk.charAt(Math.floor(Math.random() * junk.length)); }
-    function alive() { return document.body.contains(n); }
-    function band(k) {
-      var top = r(0, 85), h = r(6, 34);
-      n.style.setProperty("--" + k + "1", top.toFixed(1) + "%");
-      n.style.setProperty("--" + k + "2", Math.max(0, 100 - top - h).toFixed(1) + "%");
-      n.style.setProperty("--" + k + "x", ((Math.random() < .5 ? -1 : 1) * r(10, 46)).toFixed(0) + "px");
-    }
-    function resetLetter(sp, i) {
-      sp.style.transform = ""; sp.style.clipPath = ""; sp.style.opacity = ""; sp.style.color = ""; sp.style.textShadow = "";
-      sp.textContent = base.charAt(i);
-    }
-    function clear() {
-      ["a", "b"].forEach(function (k) { n.style.setProperty("--" + k + "1", "0%"); n.style.setProperty("--" + k + "2", "100%"); n.style.setProperty("--" + k + "x", "0px"); });
-      n.style.transform = ""; n.style.filter = ""; n.style.color = ""; n.style.textShadow = "";
-      n.setAttribute("data-text", base);
-      letters.forEach(resetLetter);
-    }
-    function scramble() {
-      var t = base.split("");
-      t[Math.floor(Math.random() * t.length)] = junkChar();
-      if (Math.random() < .4) t[Math.floor(Math.random() * t.length)] = junkChar();
-      n.setAttribute("data-text", t.join(""));
-    }
-    function glitchLetter(sp, i) {
-      if (Math.random() >= .62) { resetLetter(sp, i); return; }
-      var top = r(0, 70), cut = r(15, 60), col = tint[Math.floor(Math.random() * tint.length)];
-      sp.style.transform = "translate(" + r(-18, 18).toFixed(0) + "px," + r(-10, 10).toFixed(0) + "px) skewX(" + r(-26, 26).toFixed(0) + "deg) scaleY(" + r(.6, 1.7).toFixed(2) + ")";
-      sp.style.clipPath = Math.random() < .55 ? "inset(" + top.toFixed(0) + "% 0 " + Math.max(0, 100 - top - cut).toFixed(0) + "% 0)" : "";
-      sp.style.opacity = Math.random() < .2 ? "0" : (Math.random() < .3 ? ".4" : "");
-      sp.style.color = col === "#ffffff" ? "" : col;
-      sp.style.textShadow = col === "#ffffff" ? "" : "0 0 14px " + col;
-      sp.textContent = Math.random() < .35 ? junkChar() : base.charAt(i);
-    }
-    function burst() {
-      if (!alive()) return;
-      var frames = 4 + Math.floor(Math.random() * 8), f = 0;
-      (function step() {
-        if (!alive()) return;
-        if (f++ >= frames) { clear(); setTimeout(burst, r(220, 900)); return; }
-        band("a"); band("b");
-        if (Math.random() < .55) scramble(); else n.setAttribute("data-text", base);
-        letters.forEach(glitchLetter);
-        n.style.transform = "translate(" + r(-9, 9).toFixed(0) + "px," + r(-3, 3).toFixed(0) + "px) skewX(" + r(-12, 12).toFixed(0) + "deg)";
-        n.style.filter = Math.random() < .3 ? "brightness(" + r(1.4, 2.4).toFixed(1) + ")" : "";
-        var yellow = Math.random() < .28;
-        n.style.color = yellow ? "#fcee0a" : "";
-        n.style.textShadow = yellow ? "0 0 18px rgba(252,238,10,.6)" : "";
-        setTimeout(step, r(35, 85));
-      })();
-    }
-    setTimeout(burst, 700);
   })();
 
   /* ---------- front page: "AWAITING INPUT_" types, blinks, erases, repeats (only while the chat is empty) ---------- */

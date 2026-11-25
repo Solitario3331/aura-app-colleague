@@ -91,17 +91,20 @@ body::after { background: radial-gradient(ellipse at 50% 45%, transparent 60%, r
   background: #000; transition: opacity .5s ease; }
 #splash.hide { opacity: 0; pointer-events: none; }
 #splash::after { content: ""; position: absolute; inset: 0; pointer-events: none; opacity: .9;
-  background: repeating-linear-gradient(0deg, rgba(255,255,255,.04) 0 1px, transparent 1px 3px); animation: cpScan .12s steps(2, end) infinite; }
+  background: repeating-linear-gradient(0deg, rgba(255,255,255,.04) 0 1px, transparent 1px 3px); }
 #splash .name { position: relative; display: block; font-family: "Chakra Petch", "Orbitron", sans-serif; font-size: clamp(40px, 4.7vw, 76px);
   font-weight: 700; font-style: italic; letter-spacing: .1em; padding-left: .1em; line-height: 1; color: var(--hi); text-transform: uppercase;
-  animation: cpIn .9s steps(1, end) both, cpFlicker 1.9s steps(1, end) 1s infinite; }
+  will-change: transform, opacity; animation: cpIn .9s steps(1, end) both, cpShake 2.6s linear 1s infinite; }
 #splash .name::before, #splash .name::after { content: attr(data-text); position: absolute; left: 0; top: 0; width: 100%; padding-left: .1em; pointer-events: none; }
-#splash .name::before { color: var(--g-cyan); text-shadow: 0 0 14px rgba(5,217,232,.55); clip-path: inset(var(--a1, 0%) 0 var(--a2, 100%) 0); transform: translateX(var(--ax, 0px)); }
-#splash .name::after  { color: var(--g-red); text-shadow: 0 0 14px rgba(255,42,109,.55); clip-path: inset(var(--b1, 0%) 0 var(--b2, 100%) 0); transform: translateX(var(--bx, 0px)); }
+#splash .name::before { color: var(--g-cyan); text-shadow: 0 0 14px rgba(5,217,232,.55); will-change: transform, opacity; opacity: 0; animation: cpSliceA 2.6s linear 1s infinite; }
+#splash .name::after  { color: var(--g-red); text-shadow: 0 0 14px rgba(255,42,109,.55); will-change: transform, opacity; opacity: 0; animation: cpSliceB 2.6s linear 1s infinite; }
 #splash .name span { display: inline-block; white-space: pre; }
 #splash .bar { width: 180px; height: 1px; background: rgba(255,255,255,.1); overflow: hidden; }
 #splash .bar i { display: block; height: 100%; width: 100%; background: var(--text); transform: scaleX(0); transform-origin: left;
   animation: fill 2.4s cubic-bezier(.6,.05,.3,1) .2s forwards; }
+@keyframes cpShake { 0%, 14%, 40%, 100% { transform: none; opacity: 1; } 16% { transform: translateX(-5px) skewX(-8deg); opacity: .85; } 18% { transform: translateX(4px); } 20% { transform: none; } 62% { transform: translateX(6px) skewX(6deg); opacity: .8; } 64% { transform: none; opacity: 1; } }
+@keyframes cpSliceA { 0%, 14%, 22%, 60%, 68%, 100% { opacity: 0; } 16% { opacity: 1; transform: translateX(-16px); clip-path: inset(18% 0 58% 0); } 19% { opacity: 1; transform: translateX(10px); clip-path: inset(60% 0 12% 0); } 62% { opacity: 1; transform: translateX(14px); clip-path: inset(40% 0 35% 0); } 65% { opacity: 1; transform: translateX(-8px); clip-path: inset(8% 0 70% 0); } }
+@keyframes cpSliceB { 0%, 15%, 23%, 61%, 69%, 100% { opacity: 0; } 17% { opacity: 1; transform: translateX(14px); clip-path: inset(50% 0 25% 0); } 20% { opacity: 1; transform: translateX(-9px); clip-path: inset(10% 0 66% 0); } 63% { opacity: 1; transform: translateX(-13px); clip-path: inset(66% 0 8% 0); } 66% { opacity: 1; transform: translateX(7px); clip-path: inset(28% 0 50% 0); } }
 @keyframes cpScan { to { background-position: 0 3px; } }
 @keyframes cpIn {
   0% { opacity: 0; } 8% { opacity: 1; transform: translateX(-14px) skewX(-14deg); clip-path: inset(20% 0 50% 0); }
@@ -883,3 +886,47 @@ body.win-in #sidebar, body.win-in #main { animation: winIn .26s cubic-bezier(.2,
 #lightbox .lb-bar button { min-width: 34px; height: 30px; padding: 0 9px; border: 0; border-radius: 7px; background: transparent; color: #e8e8ee; font: 600 13px/1 inherit; cursor: pointer; }
 #lightbox .lb-bar button:hover { background: rgba(255, 255, 255, .14); }
 #lightbox .lb-hint { position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%); font-size: 12px; color: rgba(255, 255, 255, .6); background: rgba(20, 20, 24, .7); padding: 5px 12px; border-radius: 999px; pointer-events: none; white-space: nowrap; }
+
+/* media cards: pictures and videos inside answers */
+.media-card { margin: 10px 0; max-width: min(100%, 720px); border: 1px solid color-mix(in srgb, currentColor 16%, transparent); border-radius: 12px; background: color-mix(in srgb, currentColor 5%, transparent); overflow: hidden; }
+.media-frame { display: flex; align-items: center; justify-content: center; min-height: 64px; background: rgba(0, 0, 0, .28); }
+.media-el { display: block; max-width: 100%; max-height: 460px; width: auto; height: auto; object-fit: contain; }
+img.media-el { cursor: zoom-in; }
+video.media-el { width: 100%; background: #000; }
+.media-card.is-loading .media-frame { min-height: 160px; background: linear-gradient(100deg, rgba(128,128,128,.10) 30%, rgba(128,128,128,.22) 50%, rgba(128,128,128,.10) 70%); background-size: 220% 100%; animation: mediaShimmer 1.3s linear infinite; }
+@keyframes mediaShimmer { from { background-position: 120% 0; } to { background-position: -120% 0; } }
+.media-bar { display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 12px; font-size: 12px; }
+.media-meta { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: .72; }
+.media-acts { display: flex; gap: 2px; flex: none; }
+.media-btn { display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 9px; border: 0; border-radius: 7px; background: transparent; color: inherit; font: inherit; font-size: 12px; cursor: pointer; opacity: .78; }
+.media-btn:hover { background: color-mix(in srgb, currentColor 12%, transparent); opacity: 1; }
+.media-btn:focus-visible { outline: 2px solid currentColor; outline-offset: 1px; }
+.media-btn.ok { opacity: 1; }
+.media-btn svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.media-fail { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 20px 12px; text-align: center; font-size: 13px; }
+.media-fail .media-btn { background: color-mix(in srgb, currentColor 10%, transparent); opacity: 1; }
+
+/* media cards, pass 2: the picture/video itself, a floating hover toolbar, a quiet caption */
+.media-card { position: relative; display: block; width: fit-content; max-width: min(100%, 600px); margin: 12px 0; border: 1px solid color-mix(in srgb, currentColor 13%, transparent); border-radius: 14px; background: color-mix(in srgb, currentColor 4%, transparent); overflow: hidden; box-shadow: 0 1px 2px rgba(0, 0, 0, .18), 0 8px 24px rgba(0, 0, 0, .14); }
+.media-frame { display: block; min-width: 0; line-height: 0; background: transparent; }
+.media-el { display: block; max-width: 100%; max-height: 440px; width: auto; height: auto; margin: 0 auto; object-fit: contain; }
+img.media-el { cursor: zoom-in; }
+video.media-el { width: 100%; min-width: 320px; background: #000; }
+.media-card.is-loading .media-frame { width: min(560px, 80vw); height: 220px; background: linear-gradient(100deg, rgba(128,128,128,.07) 30%, rgba(128,128,128,.16) 50%, rgba(128,128,128,.07) 70%); background-size: 220% 100%; animation: mediaShimmer 1.4s linear infinite; }
+.media-card.is-failed .media-frame { width: min(560px, 80vw); }
+@keyframes mediaShimmer { from { background-position: 120% 0; } to { background-position: -120% 0; } }
+.media-bar { display: block; padding: 7px 12px 8px; font-size: 11.5px; line-height: 1.3; letter-spacing: .01em; }
+.media-meta { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: .62; }
+.media-acts { position: absolute; top: 9px; right: 9px; display: flex; gap: 2px; padding: 3px; border-radius: 10px; background: rgba(16, 17, 20, .72); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, .1); opacity: 0; transform: translateY(-3px); transition: opacity .16s ease, transform .16s ease; }
+.media-card:hover .media-acts, .media-card:focus-within .media-acts { opacity: 1; transform: none; }
+.media-acts:empty { display: none; }
+.media-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-width: 28px; height: 28px; padding: 0 7px; border: 0; border-radius: 7px; background: transparent; color: #ECECF0; font: inherit; font-size: 12px; line-height: 1; cursor: pointer; }
+.media-btn:hover { background: rgba(255, 255, 255, .16); }
+.media-btn:focus-visible { outline: 2px solid #fff; outline-offset: -2px; }
+.media-btn.ok { color: #7ee2a8; }
+.media-btn svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.media-fail { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; padding: 34px 16px; text-align: center; font-size: 13px; line-height: 1.4; }
+.media-fail > div { width: 100%; opacity: .75; }
+.media-fail .media-btn { height: 30px; padding: 0 12px; color: inherit; border: 1px solid color-mix(in srgb, currentColor 22%, transparent); }
+.media-fail .media-btn:hover { background: color-mix(in srgb, currentColor 10%, transparent); }
+@media (hover: none) { .media-acts { opacity: 1; transform: none; } }

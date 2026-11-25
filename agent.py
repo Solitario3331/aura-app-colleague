@@ -4,7 +4,7 @@ Qwen (through Ollama tool calling) can run PowerShell commands, open things, rea
 Safety rules (your rules): no deleting (only to the Recycle Bin), no Docker, no shutdown/format/registry/disk commands.
 Everything is logged to logs/agent.log.
 
-Inside the Aura app (env AURA_APP is set) the step lines are hidden, Aura's identity rules are added and
+Inside the Atlas app (env AURA_APP is set) the step lines are hidden, Atlas's identity rules are added and
 the open_website tool is offered only when the request is about browsing.
 """
 import base64
@@ -19,7 +19,7 @@ from pathlib import Path
 
 import requests
 
-# Emojis/accents must never crash the output when it is piped (e.g. into the Aura app).
+# Emojis/accents must never crash the output when it is piped (e.g. into the Atlas app).
 for _stream in (sys.stdout, sys.stderr):
     try:
         if not _stream.isatty():
@@ -49,7 +49,7 @@ def _env_num(name, default):
 HOME = Path.home()
 LOG = ROOT / "logs" / "agent.log"
 IN_AURA = bool(os.environ.get("AURA_APP"))
-PROGRESS = bool(os.environ.get("AURA_PROGRESS"))   # the Aura app shows live step lines (lines starting with @@aura)
+PROGRESS = bool(os.environ.get("AURA_PROGRESS"))   # the Atlas app shows live step lines (lines starting with @@aura)
 PROGRESS_PREFIX = "@@aura "
 OLLAMA_URL = _ollama_url()
 NUM_CTX = int(_env_num("QWEN_NUM_CTX", 65536))
@@ -151,8 +151,8 @@ SYSTEM = (
 )
 
 AURA_RULES = " ".join((
-    "IDENTITY: your name is Aura. You are Aura, a personal assistant app, built by Amar and Arry.",
-    "Use the line \"I'm Aura, built by Amar & Arry.\" ONLY when the user directly asks who or what you are,",
+    "IDENTITY: your name is Atlas. You are Atlas, a personal assistant app, built by Amar and Arry.",
+    "Use the line \"I'm Atlas, built by Amar & Arry.\" ONLY when the user directly asks who or what you are,",
     "what model or AI you are, or who made, built, trained or owns you, or which company is behind you.",
     "For EVERY other message, answer that message itself and never repeat the identity line.",
     "Never say or hint that you are Qwen, Alibaba, Alibaba Cloud, Tongyi or any other model or company.",
@@ -163,8 +163,9 @@ AURA_RULES = " ".join((
     "Answer plain questions directly and briefly (no tool needed).",
     "If anyone asks who Amar or Arry are, or asks anything about them, reply ONLY with a short cute line",
     "saying they are two lovebirds making something cute together (add a heart), with no other details about them.",
-    "To pause, resume or mute the video in the Aura browser use the control_media tool and report only what its result says.",
+    "To pause, resume or mute the video in the Atlas browser use the control_media tool and report only what its result says.",
     "To PLAY music or a video on YouTube, use the play_youtube tool (it picks a video that really plays and checks the screen).",
+    "If the user sends a video link (TikTok, Instagram, X, YouTube...) and wants to know what is in it, use the watch_video tool and describe only what its result says.",
     "To open a website (for example YouTube) when the user ASKS to open or browse one, use the open_website tool",
     "with the full https:// address; never open a browser with commands.",
     "Open a website or search the web ONLY when the user explicitly asks to browse, open a site or look something up online.",
@@ -177,18 +178,24 @@ if IN_AURA:
     TOOLS.append(_tool(
         "open_website",
         "Open a web page (YouTube, Google, any website) or a local website file (full path to an .html file "
-        "or its folder) inside the Aura app's own browser. ALWAYS use this to open a website. "
+        "or its folder) inside the Atlas app's own browser. ALWAYS use this to open a website. "
         "Never start a browser with run_powershell.", url=1))
     TOOLS.append(_tool(
         "control_media",
-        "Control the video or music playing in the Aura browser: action is play, pause, mute, unmute or status. "
+        "Control the video or music playing in the Atlas browser: action is play, pause, mute, unmute or status. "
         "It really operates the player and returns its true state. ALWAYS use it for pause / resume / play / mute requests, "
         "and tell the user exactly what its result says.", action=1))
     TOOLS.append(_tool(
         "play_youtube",
-        "Play music or a video on YouTube inside the Aura app. Give WHAT to play (a few words, for example 'chill lofi playlist') "
+        "Play music or a video on YouTube inside the Atlas app. Give WHAT to play (a few words, for example 'chill lofi playlist') "
         "or a YouTube link. It finds a video that really plays and checks the screen, and tries the next one if there is an error. "
         "ALWAYS use this when the user wants to play, listen to or watch something on YouTube.", what=1))
+    TOOLS.append(_tool(
+        "watch_video",
+        "Watch a video from a link (TikTok, Instagram, X, YouTube, Facebook ...) when the user sends a link and wants to know "
+        "what is in it, or says 'watch this'. It downloads a small copy, looks at pictures from it and reads the title, caption "
+        "and subtitles. It also listens to the speech and returns the spoken words; if the result says it could not hear, tell the user. Do NOT use it to play music (use play_youtube).",
+        url=1))
 
 
 def log(msg: str) -> None:
@@ -200,7 +207,7 @@ def log(msg: str) -> None:
         pass
 
 
-# ---- opening websites inside Aura (through the app's local control door) ----
+# ---- opening websites inside Atlas (through the app's local control door) ----
 def _local_target(url: str):
     """A local file/folder path hidden in `url`, or None if it is a web address."""
     if url.lower().startswith("file:"):
@@ -217,7 +224,7 @@ def _local_target(url: str):
 
 
 def open_in_aura(url: str) -> str:
-    """Send a web address or a local website file to the Aura app's browser (it shows it in the pane)."""
+    """Send a web address or a local website file to the Atlas app's browser (it shows it in the pane)."""
     url = (url or "").strip().strip('"').strip("'")
     local = _local_target(url)
     params = {}
@@ -240,10 +247,10 @@ def open_in_aura(url: str) -> str:
         params["token"] = info["token"]
         r = requests.get("http://127.0.0.1:%d/open" % int(info["port"]), params=params, timeout=5)
         if r.status_code == 200:
-            return "Opened in the Aura browser: " + shown
+            return "Opened in the Atlas browser: " + shown
     except Exception as exc:
         log("open_in_aura failed: " + repr(exc))
-    return "The Aura browser is not available right now, so nothing was opened (the normal browser is never used): " + shown
+    return "The Atlas browser is not available right now, so nothing was opened (the normal browser is never used): " + shown
 
 
 # ---- YouTube, the smart way: only open videos that really play, then check the screen ----
@@ -289,7 +296,7 @@ def _yt_title(vid: str) -> str:
 
 
 def _screen_shows_error() -> bool | None:
-    """Look at the Aura window (picture) and ask the vision model whether the player shows an error. None = could not tell."""
+    """Look at the Atlas window (picture) and ask the vision model whether the player shows an error. None = could not tell."""
     try:
         info = json.loads((ROOT / "logs" / "aura_ctl.json").read_text(encoding="utf-8"))
         r = requests.get("http://127.0.0.1:%d/shot" % int(info["port"]), params={"token": info["token"]}, timeout=20)
@@ -309,7 +316,7 @@ def _screen_shows_error() -> bool | None:
 
 
 def play_youtube(what: str) -> str:
-    """Play something on YouTube inside Aura: a search, or a link. Skips videos YouTube says cannot play, and videos whose
+    """Play something on YouTube inside Atlas: a search, or a link. Skips videos YouTube says cannot play, and videos whose
     player shows an error on screen, and tries the next result."""
     what = (what or "").strip()
     first = _yt_id(what)
@@ -346,16 +353,16 @@ def play_youtube(what: str) -> str:
         really = "is now playing" in mres
         title = _yt_title(vid)
         if not really:
-            return ("Opened" + (" \"" + title + "\"" if title else "") + " in Aura but it is NOT playing yet (" + mres + "). "
+            return ("Opened" + (" \"" + title + "\"" if title else "") + " in Atlas but it is NOT playing yet (" + mres + "). "
                     "Tell the user to click the video once.")
         how = "I looked at the screen and it plays" if bad is False else "YouTube says it can play; I could not look at the screen"
-        return ("Playing" + (f" \"{title}\"" if title else "") + " on YouTube in Aura (" + how + "). "
+        return ("Playing" + (f" \"{title}\"" if title else "") + " on YouTube in Atlas (" + how + "). "
                 "If there is no sound, click the video once: the browser may block autoplay until you click.")
     return "I tried " + str(len(tried)) + " videos but none of them would play (" + ", ".join(tried)[:200] + "). Try a different search."
 
 
 def control_media(action: str) -> str:
-    """Play, pause, mute... the video shown in Aura, and report what the player REALLY does afterwards."""
+    """Play, pause, mute... the video shown in Atlas, and report what the player REALLY does afterwards."""
     action = (action or "").strip().lower()
     action = {"resume": "play", "start": "play", "stop": "pause", "unpause": "play", "silence": "mute"}.get(action, action)
     if action not in ("status", "play", "pause", "toggle", "mute", "unmute"):
@@ -365,7 +372,7 @@ def control_media(action: str) -> str:
         r = requests.get("http://127.0.0.1:%d/media" % int(info["port"]), params={"token": info["token"], "action": action}, timeout=30)
         d = r.json()
     except Exception as exc:
-        return "I could not reach the video in Aura: " + repr(exc)
+        return "I could not reach the video in Atlas: " + repr(exc)
     if not d.get("ok"):
         return d.get("status", "I could not control the video.")
     state = "paused" if d.get("paused") else "playing"
@@ -480,6 +487,9 @@ def run_tool(name: str, args: dict) -> str:
             return control_media(str(args.get("action", "")))
         if name == "play_youtube":
             return play_youtube(str(args.get("what", "")))
+        if name == "watch_video":
+            import video_watch
+            return video_watch.watch(str(args.get("url", "")), MODEL, OLLAMA_URL, log)
         if name == "open_website":
             u = str(args.get("url", ""))
             if re.search(r"youtube\.com/watch|youtu\.be/", u, re.I):  # a YouTube video link: never open one that cannot play
@@ -516,7 +526,7 @@ def _parse_args(raw) -> dict:
 
 
 def emit(ev: dict) -> None:
-    """A live progress line for the Aura app (only when it asked for them)."""
+    """A live progress line for the Atlas app (only when it asked for them)."""
     if PROGRESS:
         try:
             print(PROGRESS_PREFIX + json.dumps(ev), flush=True)
@@ -626,7 +636,7 @@ def main(task: str, images: list[str] | None = None) -> None:
             fn = call.get("function") or {}
             name = fn.get("name", "")
             args = _parse_args(fn.get("arguments"))
-            if not IN_AURA:  # inside the Aura app the raw steps stay in logs/agent.log only
+            if not IN_AURA:  # inside the Atlas app the raw steps stay in logs/agent.log only
                 print(f"[{step}] {name}: {json.dumps(args)[:200]}", flush=True)
             ev = agent_step(name, args)
             emit({"t": "step", "kind": ev.get("kind", "work"), "text": ev.get("text", ""), "detail": agent_detail(name, args)})
@@ -663,17 +673,17 @@ if __name__ == "__main__":
         if sys.argv[i] == "--image" and i + 1 < len(sys.argv):
             imgs.append(sys.argv[i + 1])
             i += 2
-        elif sys.argv[i] == "--see-aura":  # a picture of the Aura window (and its preview pane), taken right now
+        elif sys.argv[i] == "--see-aura":  # a picture of the Atlas window (and its preview pane), taken right now
             try:
                 info = json.loads((ROOT / "logs" / "aura_ctl.json").read_text(encoding="utf-8"))
                 r = requests.get("http://127.0.0.1:%d/shot" % int(info["port"]), params={"token": info["token"]}, timeout=20)
                 if r.status_code != 200:
-                    sys.exit("I could not take a picture of the Aura window right now.")
+                    sys.exit("I could not take a picture of the Atlas window right now.")
                 imgs.append(str(ROOT / "logs" / "aura_shot.png"))
             except SystemExit:
                 raise
             except Exception as exc:
-                sys.exit("I could not reach the Aura window: " + repr(exc))
+                sys.exit("I could not reach the Atlas window: " + repr(exc))
             i += 1
         else:
             words.append(sys.argv[i])

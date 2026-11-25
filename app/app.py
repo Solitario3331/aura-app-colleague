@@ -1,4 +1,4 @@
-"""Aura desktop app: the Python side (window, chats, helpers, browser pane).
+"""Atlas desktop app: the Python side (window, chats, helpers, browser pane).
 
 The window shows app/web/index.html. The page calls the public methods of `Api`
 through window.pywebview.api, so their names must never change. Every public
@@ -56,10 +56,10 @@ DROP_DIR = CHATS_DIR / "_dropped"       # copies of dropped files when the page 
 PICS_DIR = CHATS_DIR / "_pics"          # the app's own copies of sent pictures (kept two days)
 LOG_FILE = ROOT / "logs" / "aura_app.log"
 CTL_FILE = ROOT / "logs" / "aura_ctl.json"
-RESTART_READY = ROOT / "logs" / "aura_restart_ready.txt"   # the new Aura writes this once it has started fine
-RESTART_WAIT_SECONDS = 45               # how long the old Aura waits for the new one before giving up
+RESTART_READY = ROOT / "logs" / "aura_restart_ready.txt"   # the new Atlas writes this once it has started fine
+RESTART_WAIT_SECONDS = 45               # how long the old Atlas waits for the new one before giving up
 
-AURA_MODEL = "claude-sonnet-5-5"        # Aura mode: Sonnet + the local helper (streaming chat)
+AURA_MODEL = "claude-sonnet-5-5"        # Atlas mode: Sonnet + the local helper (streaming chat)
 QUICK_MODEL = "claude-haiku-5-5"        # Quick mode: Haiku + the local helper (streaming chat, never thinks)
 HELPER_MODEL = "claude-sonnet-5-5"      # old one-shot Quick fallback (kept for the job path)
 POLISH_MODEL = "claude-opus-5-5"        # Polish mode
@@ -72,7 +72,7 @@ FILLER_STEPS = ("working on it", "working on this", "completed a task", "on it")
 LOCAL_TIMEOUT = 15 * 60                # Local/Quick: no answer after 15 minutes -> stop and say so
 LOCAL_DEADLINE = LOCAL_TIMEOUT - 60     # the local helper itself wraps up (short summary) a minute before that
 CLAUDE_TIMEOUTS = {"auto": 10 * 60, "big": 30 * 60, "polish": 20 * 60, "claude": 10 * 60}
-AURA_SILENT_SECONDS = 15 * 60           # Aura mode: a turn with no sign of life for 15 minutes is stopped
+AURA_SILENT_SECONDS = 15 * 60           # Atlas mode: a turn with no sign of life for 15 minutes is stopped
 PROGRESS_PREFIX = "@@aura "             # live step lines from agent.py (never shown as text)
 WORKING_ELSEWHERE = "This chat is still working. Wait for it to finish, or press Stop."
 CHIP_TEXT = {"read": "Read files", "search": "Searched", "edit": "Edited files", "run": "Ran a command",
@@ -85,22 +85,22 @@ IMAGE_EXT = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp", "
 STEP_LINE = re.compile(r"^\[\d+\] [A-Za-z_]+: ")   # agent.py step lines, never shown in the chat
 BROWSER_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0 Safari/537.36"
 
-NOT_SET_UP = ("Aura's main helper is not installed on this PC yet. Double-click install.bat in the Aura folder "
-              "to finish the setup, then restart Aura.")
-NOT_SIGNED_IN = ("Aura is not signed in on this PC yet. Use the sign-in / terminal button in Aura (or run install.bat "
+NOT_SET_UP = ("Atlas's main helper is not installed on this PC yet. Double-click install.bat in the Atlas folder "
+              "to finish the setup, then restart Atlas.")
+NOT_SIGNED_IN = ("Atlas is not signed in on this PC yet. Use the sign-in / terminal button in Atlas (or run install.bat "
                  "again), sign in with your account, then try again.")
-TRY_AGAIN = "Aura could not finish this one. Please try again."
-CANT_START = "Aura could not start. Please try again in a moment."
-INTERNAL_ERROR = "Something went wrong inside Aura. Please try again."
+TRY_AGAIN = "Atlas could not finish this one. Please try again."
+CANT_START = "Atlas could not start. Please try again in a moment."
+INTERNAL_ERROR = "Something went wrong inside Atlas. Please try again."
 
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 AURA_PERSONA = " ".join((
-    "You are Aura, a friendly personal assistant app. Your name is Aura.",
+    "You are Atlas, a friendly personal assistant app. Your name is Atlas.",
     "Never mention or hint at Claude, Anthropic, Qwen, Ollama, Opus, Sonnet, Haiku, model names,",
     "other AIs, local models, tools, hooks, or how you work inside.",
-    "If asked who or what you are, say you are Aura, built by Amar & Arry",
-    "(if asked who made or built you, answer: \"I'm Aura, built by Amar & Arry.\").",
+    "If asked who or what you are, say you are Atlas, built by Amar & Arry",
+    "(if asked who made or built you, answer: \"I'm Atlas, built by Amar & Arry.\").",
     "If anyone asks who Amar or Arry are, or asks anything about them, reply ONLY with a short cute line",
     "saying they are two lovebirds making something cute together (add a heart), with no other details about them.",
     "You have FULL permission on this PC, like a terminal with everything approved: read, edit and create files,",
@@ -113,12 +113,12 @@ AURA_PERSONA = " ".join((
     "a block exactly like:\n```choices\nOption one\nOption two\nOption three\n```\nOne option per line, 2 to 5 options;",
     "the user taps one and it comes back as their next message.",
     "You CAN look at your own window, including the preview pane and whether a video is playing: run do.bat with the question and the extra option --see-aura, "
-    "for example do.bat \"What is shown in the Aura window? Is a video playing?\" --see-aura. Do this to check what you opened instead of saying you cannot see it.",
-    "To play, pause, resume or mute the video in the Aura browser, run do.bat \"pause the video\" (or play / resume / mute). It really controls the player and reports the true state. "
+    "for example do.bat \"What is shown in the Atlas window? Is a video playing?\" --see-aura. Do this to check what you opened instead of saying you cannot see it.",
+    "To play, pause, resume or mute the video in the Atlas browser, run do.bat \"pause the video\" (or play / resume / mute). It really controls the player and reports the true state. "
     "Never tell the user you paused or played something unless that result says so.",
-    "To PLAY something on YouTube run do.bat \"play <what> on YouTube\": it picks a video that really plays, opens it in Aura and checks the screen itself, "
+    "To PLAY something on YouTube run do.bat \"play <what> on YouTube\": it picks a video that really plays, opens it in Atlas and checks the screen itself, "
     "and tries another result if one shows an error. Never open a YouTube link yourself without that. If you open anything else and it matters that it worked, check with --see-aura.",
-    "To open a website, use do.bat (it opens the site inside Aura); never start a browser yourself. A website you built is ALREADY shown in the Aura preview pane: never open it in the normal browser, never run start/Start-Process/explorer on it, and do not say it was opened in the browser unless the user asked.",
+    "To open a website, use do.bat (it opens the site inside Atlas); never start a browser yourself. A website you built is ALREADY shown in the Atlas preview pane: never open it in the normal browser, never run start/Start-Process/explorer on it, and do not say it was opened in the browser unless the user asked.",
     "Open a website ONLY when the user asks to browse, open a site or look something up online;",
     "for 'show me', 'give me' or any request for information, a recipe or an answer, write the answer in the chat.",
     "For facts that may be recent, specific or easy to get wrong (news, shows, films, books, people, prices, versions,",
@@ -171,18 +171,18 @@ def _friendly(text: str) -> str:
         return NOT_SIGNED_IN
     if short and "ollama" in low and "not found" in low and "model" in low:
         _log("local model missing: " + text[-500:])
-        return ("Aura's local helper is reachable, but its brain (model) is not installed there yet. "
-                "Run install.bat again, or ask the person who set up Aura.")
+        return ("Atlas's local helper is reachable, but its brain (model) is not installed there yet. "
+                "Run install.bat again, or ask the person who set up Atlas.")
     if short and "ollama took too long" in low:
         _log("local helper slow: " + text[-500:])
-        return "Aura's local helper is very busy right now. Please try again in a few minutes."
+        return "Atlas's local helper is very busy right now. Please try again in a few minutes."
     if short and "ollama returned an error" in low:
         _log("local helper error: " + text[-500:])
-        return "Aura's local helper had a problem with this request. Please try again in a moment."
+        return "Atlas's local helper had a problem with this request. Please try again in a moment."
     if "11434" in low or ("ollama" in low and ("connect" in low or "refused" in low or "not found" in low)):
         _log("local helper unreachable: " + text[-500:])
         if ollama_addr.is_this_pc(ollama_addr.read_address(ROOT)):
-            return "Aura's local helper is not running on this PC. Start Ollama (or restart the PC), then try again."
+            return "Atlas's local helper is not running on this PC. Start Ollama (or restart the PC), then try again."
         return "Can't reach Amar's PC (the one with the big graphics card). Is it on? Then try again."
     if "traceback (most recent call last)" in low:
         _log("traceback: " + text[-3000:])
@@ -194,7 +194,7 @@ def _clean_env(level=None) -> dict:
     """Environment for helper programs: no settings leaking in from a parent Claude session."""
     env = {k: v for k, v in os.environ.items() if not k.startswith(("CLAUDE_CODE", "CLAUDECODE", "QWEN_MODEL"))}
     env.update(AURA_APP="1", PYTHONIOENCODING="utf-8", PYTHONUTF8="1")
-    env.setdefault("AGENT_DEADLINE", "540")   # a local task started by Aura mode (do.bat) wraps up within 9 minutes
+    env.setdefault("AGENT_DEADLINE", "540")   # a local task started by Atlas mode (do.bat) wraps up within 9 minutes
     env.pop("AGENT_THINK", None)
     env.pop("MAX_THINKING_TOKENS", None)
     if (level or _THINK["level"]) == "off":   # Thinking switched off: Claude and the local helper both skip it
@@ -286,7 +286,7 @@ def _prune_old_pictures() -> None:
 def _history(sid, since_tag=None) -> str:
     """What was already said in this chat (maybe in another mode), so the current mode knows."""
     try:
-        messages = [m for m in _store_load(sid)["messages"]   # Aura's own notes/errors are not conversation
+        messages = [m for m in _store_load(sid)["messages"]   # Atlas's own notes/errors are not conversation
                     if not (m.get("role") == "assistant" and strip_tag(m.get("text", ""))[0] in ("App", "Note"))]
         return build_context(messages, since_tag=since_tag) if since_tag else build_context(messages)
     except Exception:
@@ -327,7 +327,7 @@ def _is_offline_error(exc) -> bool:
 
 
 def _wait_for_old_aura(argv) -> bool:
-    """After an update restart: tell the old Aura we started fine, then wait until it has closed, so the
+    """After an update restart: tell the old Atlas we started fine, then wait until it has closed, so the
     window titles, control door file and taskbar entry are ours alone. Returns True if this is such a restart."""
     pid = 0
     for a in argv:
@@ -350,7 +350,7 @@ def _wait_for_old_aura(argv) -> bool:
         if h:
             try:
                 if k32.WaitForSingleObject(ctypes.c_void_p(h), 20000) != 0:
-                    _log("restart: old Aura still running after 20 s, starting anyway")
+                    _log("restart: old Atlas still running after 20 s, starting anyway")
             finally:
                 k32.CloseHandle(ctypes.c_void_p(h))
     _unlink(RESTART_READY)
@@ -449,7 +449,7 @@ def run_claude(prompt, model, extra=None, timeout=1800, should_stop=None, effort
             return "Stopped."
         if reason == "timeout":
             _log("claude -p ({}) stopped after {} s".format(model, timeout))
-            return "Aura took too long ({} minutes) and stopped. Try a smaller request.".format(int(timeout // 60))
+            return "Atlas took too long ({} minutes) and stopped. Try a smaller request.".format(int(timeout // 60))
         out = (out or "").strip()
         if out:
             return NOT_SIGNED_IN if _needs_login(out) else _friendly(out)
@@ -558,7 +558,7 @@ _MEDIA_SRV: dict = {}
 
 
 class _MediaHandler(http.server.SimpleHTTPRequestHandler):
-    """Serves files that Aura registered (by a random token) on 127.0.0.1 only. Supports Range requests, which
+    """Serves files that Atlas registered (by a random token) on 127.0.0.1 only. Supports Range requests, which
     video players need for seeking. Nothing else on the disk can be reached."""
 
     def log_message(self, *args):
@@ -636,7 +636,7 @@ def _media_url(path: Path) -> str:
 
 
 def _capture_aura_window(dest: Path) -> bool:
-    """Save a picture of this Aura window (everything in it, including the preview pane) as a PNG. Windows only."""
+    """Save a picture of this Atlas window (everything in it, including the preview pane) as a PNG. Windows only."""
     import struct
     import zlib
     u, g = ctypes.windll.user32, ctypes.windll.gdi32
@@ -653,7 +653,7 @@ def _capture_aura_window(dest: Path) -> bool:
         u.GetWindowThreadProcessId(hwnd, ctypes.byref(owner))
         buf = ctypes.create_unicode_buffer(64)
         u.GetWindowTextW(hwnd, buf, 64)
-        if owner.value == pid and buf.value == "Aura" and u.IsWindowVisible(hwnd):
+        if owner.value == pid and buf.value == "Atlas" and u.IsWindowVisible(hwnd):
             found.append(hwnd)
         return True
 
@@ -769,7 +769,7 @@ def _start_control(api_obj):
 class Api:
     def __init__(self):
         # Everything private starts with "_" so the page never sees it.
-        self._chats = {}                     # sid -> running chat process state (Aura mode)
+        self._chats = {}                     # sid -> running chat process state (Atlas mode)
         self._chats_lock = threading.Lock()
         self._jobs = {}                      # sid -> one-shot job state (Quick, Local, Big project, Polish)
         self._jobs_lock = threading.Lock()
@@ -1045,11 +1045,11 @@ class Api:
                 return {"status": "This chat is empty."}
             lines = []
             for m in msgs:
-                who = "You" if m.get("role") == "user" else "Aura"
+                who = "You" if m.get("role") == "user" else "Atlas"
                 lines.append(who + ":\n" + mask_names(str(m.get("text", ""))) + "\n")
             title = re.sub(r'[\\/:*?"<>|]+', "", data.get("title") or "chat").strip()[:40] or "chat"
             dialog_type = getattr(getattr(webview, "FileDialog", None), "SAVE", None) or webview.SAVE_DIALOG
-            res = webview.windows[0].create_file_dialog(dialog_type, save_filename="Aura - " + title + ".txt")
+            res = webview.windows[0].create_file_dialog(dialog_type, save_filename="Atlas - " + title + ".txt")
             if not res:
                 return {"status": "Cancelled."}
             path = res if isinstance(res, str) else res[0]
@@ -1062,7 +1062,7 @@ class Api:
     def _main_hwnd(self):
         u = _user32()
         if not (self._hwnd and u.IsWindow(self._hwnd)):
-            self._hwnd = _find_window("Aura")
+            self._hwnd = _find_window("Atlas")
         return self._hwnd
 
     def win_theme(self, light: bool) -> None:
@@ -1073,10 +1073,67 @@ class Api:
                 return
             col = 0xF2F5F6 if light else 0x090706   # COLORREF 0x00BBGGRR (#F6F5F2 / #060709)
             dwm = ctypes.windll.dwmapi
-            for attr in (35, 34):   # DWMWA_CAPTION_COLOR, DWMWA_BORDER_COLOR
-                dwm.DwmSetWindowAttribute(hwnd, attr, ctypes.byref(ctypes.c_int(col)), 4)
+            dwm.DwmSetWindowAttribute(hwnd, 35, ctypes.byref(ctypes.c_int(col)), 4)           # caption color
+            dwm.DwmSetWindowAttribute(hwnd, 34, ctypes.byref(ctypes.c_uint(0xFFFFFFFE)), 4)   # border: none
         except Exception as exc:
             _log("win_theme failed: " + repr(exc))
+
+    def clipboard_text(self) -> str:
+        """Plain text on the Windows clipboard ('' if none); the page cannot always read it itself."""
+        try:
+            u = _user32()
+            k = ctypes.windll.kernel32
+            u.GetClipboardData.restype = ctypes.c_void_p
+            k.GlobalLock.restype = ctypes.c_void_p
+            k.GlobalLock.argtypes = [ctypes.c_void_p]
+            k.GlobalUnlock.argtypes = [ctypes.c_void_p]
+            if not u.OpenClipboard(None):
+                return ""
+            try:
+                h = u.GetClipboardData(13)   # CF_UNICODETEXT
+                if not h:
+                    return ""
+                p = k.GlobalLock(h)
+                try:
+                    return ctypes.wstring_at(p) if p else ""
+                finally:
+                    k.GlobalUnlock(h)
+            finally:
+                u.CloseClipboard()
+        except Exception as exc:
+            _log("clipboard_text failed: " + repr(exc))
+            return ""
+
+    def win_resize(self, edge: str) -> None:
+        """Resize the window from one edge/corner (n s e w ne nw se sw) while the left button stays down."""
+        try:
+            from ctypes import wintypes as w
+            u = _user32()
+            h = self._main_hwnd()
+            if not h or u.IsZoomed(h) or edge not in ("n", "s", "e", "w", "ne", "nw", "se", "sw"):
+                return
+            pt, rc = w.POINT(), w.RECT()
+            u.GetCursorPos(ctypes.byref(pt))
+            u.GetWindowRect(h, ctypes.byref(rc))
+            l0, t0, r0, b0, px, py = rc.left, rc.top, rc.right, rc.bottom, pt.x, pt.y
+            scale = max(1.0, (u.GetDpiForSystem() or 96) / 96)
+            min_w, min_h = int(760 * scale), int(520 * scale)
+            flags = SWP_NOZORDER | SWP_NOACTIVATE
+            started, last = time.time(), (px, py)
+            while (u.GetAsyncKeyState(VK_LBUTTON) & 0x8000) and time.time() - started < 120:
+                u.GetCursorPos(ctypes.byref(pt))
+                if (pt.x, pt.y) != last:
+                    last = (pt.x, pt.y)
+                    dx, dy = pt.x - px, pt.y - py
+                    l, t, r, b = l0, t0, r0, b0
+                    if "e" in edge: r = max(l0 + min_w, r0 + dx)
+                    if "w" in edge: l = min(r0 - min_w, l0 + dx)
+                    if "s" in edge: b = max(t0 + min_h, b0 + dy)
+                    if "n" in edge: t = min(b0 - min_h, t0 + dy)
+                    u.SetWindowPos(h, None, l, t, r - l, b - t, flags)
+                time.sleep(0.008)
+        except Exception as exc:
+            _log("win_resize failed: " + repr(exc))
 
     def win_drag(self) -> None:
         """Move the window with the mouse while the left button stays down (called when the top strip is pressed)."""
@@ -1138,7 +1195,7 @@ class Api:
             return {"max": False}
 
     def win_close(self) -> None:
-        """Close Aura: extra windows first (one that is still being created cannot be closed and used to stop
+        """Close Atlas: extra windows first (one that is still being created cannot be closed and used to stop
         the loop before the main window), the main window last; if it still runs after 6 s, end the process."""
         try:
             import webview
@@ -1149,7 +1206,7 @@ class Api:
         guard = threading.Timer(6.0, self._force_exit)
         guard.daemon = True
         guard.start()
-        main_win = next((w for w in wins if getattr(w, "title", "") == "Aura"), wins[0] if wins else None)
+        main_win = next((w for w in wins if getattr(w, "title", "") == "Atlas"), wins[0] if wins else None)
         for win in [w for w in wins if w is not main_win] + ([main_win] if main_win is not None else []):
             try:
                 win.destroy()
@@ -1159,13 +1216,13 @@ class Api:
             self._force_exit()
 
     def _force_exit(self):
-        _log("closing: window did not close by itself, ending Aura")
+        _log("closing: window did not close by itself, ending Atlas")
         try:
             self._shutdown()
         finally:
             os._exit(0)
 
-    # ---- websites Aura builds (shown in the browser pane) ----
+    # ---- websites Atlas builds (shown in the browser pane) ----
     def _site_roots(self):
         home = Path.home()
         return [ROOT / "sites", ROOT / "site", home / "Desktop", home / "Documents", home / "Downloads"]
@@ -1289,10 +1346,10 @@ class Api:
             return {"ok": False, "status": "I could not reach the video."}
 
     def _page_media(self, action: str) -> dict:
-        """Play / pause / mute the video of the page shown in the Aura browser view, then read back what it REALLY does now."""
+        """Play / pause / mute the video of the page shown in the Atlas browser view, then read back what it REALLY does now."""
         win = self._ov_win
         if win is None:
-            return {"ok": False, "status": "No page is open in the Aura browser."}
+            return {"ok": False, "status": "No page is open in the Atlas browser."}
         def js_for(a):
             return (
                 "(function(action){var v=document.querySelector('video');"
@@ -1325,13 +1382,13 @@ class Api:
             return {"ok": False, "status": "I could not reach the video."}
 
     def open_browser_window(self, url) -> dict:
-        """Open a web address in its own Aura browser window (works with every site)."""
+        """Open a web address in its own Atlas browser window (works with every site)."""
         try:
             import webview
             u = str(url)
             if not u.lower().startswith(("http://", "https://")):
                 return {"status": "Not a web address."}
-            webview.create_window("Aura Browser", url=u, width=1200, height=800, min_size=(600, 400),
+            webview.create_window("Atlas Browser", url=u, width=1200, height=800, min_size=(600, 400),
                                   text_select=True, background_color="#060709")
             return {"status": "Opened."}
         except Exception as exc:
@@ -1343,7 +1400,7 @@ class Api:
         _log("ui: " + str(msg)[:600])
 
     def poll_open(self) -> list:
-        """Web addresses the assistant wants shown in the Aura browser (the page asks regularly)."""
+        """Web addresses the assistant wants shown in the Atlas browser (the page asks regularly)."""
         with self._open_lock:
             out, self._open_q = self._open_q, []
         return out
@@ -1363,7 +1420,7 @@ class Api:
                 return {"ok": False}
 
     def _overlay_open(self, url, x, y, w, h) -> dict:
-        """Show a real browser view inside the Aura window at this spot (pixels inside the window)."""
+        """Show a real browser view inside the Atlas window at this spot (pixels inside the window)."""
         import webview
         if not url.lower().startswith(("http://", "https://")):
             return {"ok": False}
@@ -1371,10 +1428,10 @@ class Api:
         if self._ov_win is not None and self._ov_hwnd and u.IsWindow(self._ov_hwnd):
             self._ov_win.load_url(url)
         else:
-            win = webview.create_window("Aura Page", url=url, width=900, height=600, x=-3000, y=-3000,
+            win = webview.create_window("Atlas Page", url=url, width=900, height=600, x=-3000, y=-3000,
                                         frameless=True, easy_drag=False, text_select=True,
                                         background_color="#060709", focus=False)
-            hwnd = _wait_for_window("Aura Page", 80, 0.1)
+            hwnd = _wait_for_window("Atlas Page", 80, 0.1)
             main = self._main_hwnd()
             if not hwnd or not main:
                 _log("overlay: could not find windows (view {}, main {})".format(hwnd, main))
@@ -1479,7 +1536,7 @@ class Api:
         reply = run_claude(prompt, model, extra, timeout, stop, effort)
         if reply is None:
             return NOT_SET_UP, "App"
-        if reply in (NOT_SIGNED_IN, TRY_AGAIN, INTERNAL_ERROR) or reply.startswith("Aura took too long"):
+        if reply in (NOT_SIGNED_IN, TRY_AGAIN, INTERNAL_ERROR) or reply.startswith("Atlas took too long"):
             return reply, "App"
         if reply == "Stopped.":
             return reply, "Note"
@@ -1487,7 +1544,7 @@ class Api:
 
     @staticmethod
     def _local_failed(reply) -> bool:
-        return (not reply or reply.startswith(("Stopped:", "Error", "No answer", "Aura's local helper is not reachable")))
+        return (not reply or reply.startswith(("Stopped:", "Error", "No answer", "Atlas's local helper is not reachable")))
 
     # ---- background jobs: the page starts one, polls its events, can leave the chat and come back ----
     def _chat_working(self, sid) -> bool:
@@ -1615,7 +1672,7 @@ class Api:
                 text = ("Look ONLY at the attached picture(s) and answer about them. Do not reuse any earlier answer or "
                         "description; describe what this picture itself shows. " + (text.strip() or "Describe this picture."))
             if len(text) > MAX_ARG_CHARS:
-                return "Error: That message is too long for this mode. Please shorten it, or use Aura mode."
+                return "Error: That message is too long for this mode. Please shorten it, or use Atlas mode."
             if not self._local_lock.acquire(blocking=False):
                 self._job_event(job, {"t": "phase", "kind": "wait"})
                 waited = time.time()
@@ -1623,7 +1680,7 @@ class Api:
                     if job and job["stopped"]:
                         return "Stopped."
                     if time.time() - waited > LOCAL_TIMEOUT:
-                        return "Error: Aura's local helper is still busy with another chat. Please try again later."
+                        return "Error: Atlas's local helper is still busy with another chat. Please try again later."
                 self._job_event(job, {"t": "phase", "kind": "look" if images else "think"})
             got_lock = True
             if job and job["stopped"]:
@@ -1654,7 +1711,7 @@ class Api:
                 return "Stopped."
             if reason == "timeout":
                 _log("agent.py stopped after {} s".format(LOCAL_TIMEOUT))
-                return ("Error: Aura got no answer within {} minutes, so it stopped. The helper PC may be busy; "
+                return ("Error: Atlas got no answer within {} minutes, so it stopped. The helper PC may be busy; "
                         "try again, or try a smaller request.".format(LOCAL_TIMEOUT // 60))
             out = "\n".join(ln for ln in (out or "").splitlines()
                             if not STEP_LINE.match(ln) and not ln.startswith(PROGRESS_PREFIX)).strip()
@@ -1670,7 +1727,7 @@ class Api:
             return _friendly(out[-6000:])
         except Exception as exc:
             _log("agent.py failed: " + repr(exc))
-            return "Error: Aura's local helper could not start."
+            return "Error: Atlas's local helper could not start."
         finally:
             if got_lock:
                 self._local_lock.release()
@@ -1755,7 +1812,7 @@ class Api:
         return res
 
     def _get_reminder_raw(self) -> dict:
-        """A short note from the person who looks after this Aura (reminder.json in the update repo). Never raises."""
+        """A short note from the person who looks after this Atlas (reminder.json in the update repo). Never raises."""
         try:
             cfg = _update_config()
             repo = os.environ.get("AURA_REMINDER_REPO", "").strip() or cfg.get("repo", "")  # a launcher may read reminders from another repo (updates stay as they are)
@@ -1853,7 +1910,7 @@ class Api:
             return {"ok": True, "version": _local_version()}
         except Exception as exc:
             _log("update install failed: " + repr(exc))
-            return {"ok": False, "status": "Could not install the update. Aura is still running; press Retry."}
+            return {"ok": False, "status": "Could not install the update. Atlas is still running; press Retry."}
         finally:
             self._upd_lock.release()
 
@@ -1862,12 +1919,12 @@ class Api:
         r = self.update_download()
         if r.get("ok"):
             r = self.update_install()
-        return {"status": "Updated. Aura will restart." if r.get("ok") else r.get("status", "Update failed.")}
+        return {"status": "Updated. Atlas will restart." if r.get("ok") else r.get("status", "Update failed.")}
 
     def update_restart(self) -> dict:
-        """Step 3: start a fresh Aura and close this one. The new one first tells us it started fine
+        """Step 3: start a fresh Atlas and close this one. The new one first tells us it started fine
         (RESTART_READY), then waits until this process is gone before opening its window. If it does not
-        come up, this Aura keeps running and the page shows the error (no restart loop)."""
+        come up, this Atlas keeps running and the page shows the error (no restart loop)."""
         with self._upd_lock:
             if self._restarting:
                 return {"ok": True}
@@ -1885,24 +1942,24 @@ class Api:
                     if _read_text(RESTART_READY):  # (a venv pythonw is a launcher, so its pid is not the app's)
                         break
                     if proc.poll() is not None:
-                        raise RuntimeError("new Aura exited early with code {}".format(proc.returncode))
+                        raise RuntimeError("new Atlas exited early with code {}".format(proc.returncode))
                     time.sleep(0.2)
                 else:
-                    raise RuntimeError("new Aura did not report back in time")
+                    raise RuntimeError("new Atlas did not report back in time")
             except Exception as exc:
                 _log("restart after update failed: " + repr(exc))
                 if proc is not None and proc.poll() is None:
                     _kill_tree(proc)
                 _unlink(RESTART_READY)
-                return {"ok": False, "status": "Aura could not restart by itself. It is still running: press Retry, "
-                                              "or close Aura and open it again to finish the update."}
+                return {"ok": False, "status": "Atlas could not restart by itself. It is still running: press Retry, "
+                                              "or close Atlas and open it again to finish the update."}
             self._restarting = True
         _log("restarting for the update (new pid {})".format(proc.pid))
         threading.Thread(target=self._exit_for_restart, daemon=True).start()
         return {"ok": True}
 
     def _exit_for_restart(self):
-        """Close everything cleanly so the new Aura can take over (it waits for this process to end)."""
+        """Close everything cleanly so the new Atlas can take over (it waits for this process to end)."""
         time.sleep(0.4)  # let the page receive the answer first
         guard = threading.Timer(8.0, lambda: os._exit(0))  # never hang around if something blocks below
         guard.daemon = True
@@ -1936,7 +1993,7 @@ class Api:
             reply = run_claude(prompt, QUICK_MODEL, ["--disallowedTools", "Bash", "PowerShell", "Write", "Edit", "MultiEdit", "NotebookEdit"], 120, None, "off")
             if reply is None:
                 return {"ok": False, "error": NOT_SET_UP}
-            if reply in (TRY_AGAIN, NOT_SIGNED_IN) or reply.startswith("Aura took too long"):
+            if reply in (TRY_AGAIN, NOT_SIGNED_IN) or reply.startswith("Atlas took too long"):
                 return {"ok": False, "error": reply}
             return {"ok": True, "text": reply}
         except Exception as exc:
@@ -1951,14 +2008,14 @@ class Api:
         return {"ok": True, "level": _THINK["level"]}
 
     def update_notice(self) -> str:
-        """The version Aura was just updated to (once, right after the restart), else ''."""
+        """The version Atlas was just updated to (once, right after the restart), else ''."""
         v, self._updated_to = self._updated_to, ""
         return v
 
-    # ---- Aura mode: one streaming background process per chat ----
+    # ---- Atlas mode: one streaming background process per chat ----
     def _claude_proc(self, sid, mode="claude"):
         """The chat's running process, started if needed. Returns its state dict, or None.
-        mode "claude" = Aura (Sonnet, the Thinking switch applies); "auto" = Quick (Haiku, never thinks).
+        mode "claude" = Atlas (Sonnet, the Thinking switch applies); "auto" = Quick (Haiku, never thinks).
         Switching between them restarts the process; the same conversation is resumed."""
         model = QUICK_MODEL if mode == "auto" else AURA_MODEL
         level = "off" if mode == "auto" else _THINK["level"]
@@ -2095,7 +2152,7 @@ class Api:
                 if partial:
                     self._save_reply(sid, partial)
                 login = any(_needs_login(n) for n in noise)
-                msg = NOT_SIGNED_IN if login else "Aura stopped unexpectedly. Please send your message again."
+                msg = NOT_SIGNED_IN if login else "Atlas stopped unexpectedly. Please send your message again."
                 self._save_answer(sid, msg, "App")
                 st["busy"] = False
                 self._publish(st, [{"t": "done", "error": True, "text": msg}])
@@ -2154,7 +2211,7 @@ class Api:
                     if st.get("busy") and idle > AURA_SILENT_SECONDS:
                         _log("chat {} silent for {} minutes while answering: stopping it".format(
                             sid, AURA_SILENT_SECONDS // 60))
-                        msg = ("Aura got no answer for {} minutes, so it stopped. Please try again."
+                        msg = ("Atlas got no answer for {} minutes, so it stopped. Please try again."
                                .format(AURA_SILENT_SECONDS // 60))
                         with st["lock"]:
                             if st.get("busy"):
@@ -2480,7 +2537,7 @@ def _set_window_app_id(hwnd, icon: Path) -> None:
     py = ROOT / ".venv" / "Scripts" / "pythonw.exe"
     values = (  # relaunch details first, the id last (setting the id makes the taskbar read the rest)
         (2, '"{}" "{}"'.format(py if py.exists() else sys.executable, ROOT / "app" / "app.py")),  # RelaunchCommand
-        (4, "Aura"),                                                                  # RelaunchDisplayNameResource
+        (4, "Atlas"),                                                                  # RelaunchDisplayNameResource
         (3, str(icon) + ",0"),                                                        # RelaunchIconResource
         (5, _app_id()),                                                             # AppUserModel.ID
     )
@@ -2558,13 +2615,13 @@ def _start_size_guard(hwnd) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Minimize animation: Aura flies into ITS OWN taskbar button and grows back out of it.
+# Minimize animation: Atlas flies into ITS OWN taskbar button and grows back out of it.
 # In plain words:
-#  - A hook only WATCHES the messages of Aura's window thread (it never changes or swallows one). The moment
-#    Windows starts to minimize Aura (taskbar click, the app's own button, Win+D, ...) the window is still on
-#    screen: the hook asks the helper thread to lay a "ghost" (a live picture of Aura drawn by Windows/DWM)
+#  - A hook only WATCHES the messages of Atlas's window thread (it never changes or swallows one). The moment
+#    Windows starts to minimize Atlas (taskbar click, the app's own button, Win+D, ...) the window is still on
+#    screen: the hook asks the helper thread to lay a "ghost" (a live picture of Atlas drawn by Windows/DWM)
 #    exactly over it, waits until that is on screen (at most 0.1 s), then lets the minimize go on. Windows' own
-#    effect is off for Aura, so the window vanishes at once under the ghost and the ghost flies into the button.
+#    effect is off for Atlas, so the window vanishes at once under the ghost and the ghost flies into the button.
 #  - On restore the hook hides the window (DWM "cloak": it still gets its size and place) and the ghost grows
 #    out of the button; at the end the window is shown under the ghost and then the ghost goes (no gap, no jump).
 #  - The ghost is a click-through tool window: never a taskbar button, never focus, never clicks.
@@ -2587,7 +2644,7 @@ def _anim_enabled() -> bool:
 
 
 def _button_finder() -> None:
-    """Keeps a hidden PowerShell open that finds Aura's own taskbar button by its app id (UI Automation,
+    """Keeps a hidden PowerShell open that finds Atlas's own taskbar button by its app id (UI Automation,
     about 15 ms per question). Asked at every minimize and every few seconds; the answer is the button's middle."""
     app_id = _app_id().replace("'", "")
     script = (
@@ -2724,7 +2781,7 @@ def _anim_thread(hwnd) -> None:
             return (rc.left, rc.top, rc.right, rc.bottom)
 
         # The ghost: borderless, always on top, click-through, no focus, no taskbar button, and no surface of its
-        # own (only the DWM picture of Aura is drawn on it).
+        # own (only the DWM picture of Atlas is drawn on it).
         inst = k32.GetModuleHandleW(None)
         wc = WNDCLASSEXW()
         wc.cbSize = ctypes.sizeof(WNDCLASSEXW)
@@ -2758,7 +2815,7 @@ def _anim_thread(hwnd) -> None:
             return True
 
         def put(r, op: int) -> None:
-            """Draw the picture of Aura at screen rect r with opacity op (0-255)."""
+            """Draw the picture of Atlas at screen rect r with opacity op (0-255)."""
             bx = state["box"]
             props.dwFlags = 0x1 | 0x4 | 0x8   # destination, opacity, visible
             props.rcDestination = w.RECT(r[0] - bx[0], r[1] - bx[1], r[2] - bx[0], r[3] - bx[1])
@@ -2783,7 +2840,7 @@ def _anim_thread(hwnd) -> None:
             return None
 
         def button_for(full):
-            """Aura's button on the taskbar of the screen the window is on (each screen may show one)."""
+            """Atlas's button on the taskbar of the screen the window is on (each screen may show one)."""
             found = _ANIM["button"]
             if not found or not full:
                 return None
@@ -2795,7 +2852,7 @@ def _anim_thread(hwnd) -> None:
             return None   # not on this screen's taskbar: Windows' own effect
 
         def icon_rect(full):
-            """A small copy of the window's shape sitting in the middle of Aura's taskbar button."""
+            """A small copy of the window's shape sitting in the middle of Atlas's taskbar button."""
             b = button_for(full)
             if not b:
                 return None
@@ -2899,12 +2956,12 @@ def _anim_thread(hwnd) -> None:
             dwm.DwmFlush()
             hide_ghost()                     # ...and only then the picture goes: no gap, no jump
 
-        # ---- the hook: runs on Aura's window thread, only watches ----
+        # ---- the hook: runs on Atlas's window thread, only watches ----
         def on_pos_changing(lparam) -> None:
             p = WPOS.from_address(lparam)
             if not _ANIM["min"]:
                 if p.flags & 0x8000 and not p.flags & 0x2 and p.x <= -32000 and u.IsIconic(hwnd):
-                    _ANIM["min"] = True      # Windows is minimizing Aura; the window is still on screen
+                    _ANIM["min"] = True      # Windows is minimizing Atlas; the window is still on screen
                     full = rect_of(hwnd)
                     _ANIM["ask"].set()       # look up the button again (the answer may retarget the flight)
                     if not (full and full[0] > -30000 and icon_rect(full) and _anim_enabled()):
@@ -2919,7 +2976,7 @@ def _anim_thread(hwnd) -> None:
                     if not _ANIM["ready"].wait(0.1):
                         _log("anim: ghost was late")
             elif not u.IsIconic(hwnd):
-                _ANIM["min"] = False         # Windows is restoring Aura
+                _ANIM["min"] = False         # Windows is restoring Atlas
                 full = _ANIM["back"]
                 if not (full and icon_rect(full) and _anim_enabled()):
                     transitions_off(hwnd, False)
@@ -2996,7 +3053,7 @@ def _anim_watchdog(hwnd) -> None:
 
 
 def _set_window_icon() -> None:
-    """Give the window and taskbar the Aura icon and drop the native title bar (Windows only)."""
+    """Give the window and taskbar the Atlas icon and drop the native title bar (Windows only)."""
     try:
         u = _user32()
         icon = ROOT / "app" / ("aura_pro3.ico" if _theme() == "hermes" else "aura_icon4.ico")  # each look has its own icon
@@ -3005,7 +3062,7 @@ def _set_window_icon() -> None:
             icon = ROOT / "app" / Path(custom).name
         if not icon.exists():
             icon = ROOT / "app" / "icon.ico"
-        hwnd = _wait_for_window("Aura", 240, 0.25)  # a slow first start can take a while
+        hwnd = _wait_for_window("Atlas", 240, 0.25)  # a slow first start can take a while
         if not hwnd:
             _log("icon: window not found")
             return
@@ -3048,7 +3105,7 @@ def _set_window_icon() -> None:
         threading.Thread(target=again, daemon=True).start()
         # Drop the caption but keep the resize frame (the page draws its own top strip).
         style = u.GetWindowLongW(hwnd, GWL_STYLE)
-        u.SetWindowLongW(hwnd, GWL_STYLE, _as_long(style & ~WS_CAPTION))
+        u.SetWindowLongW(hwnd, GWL_STYLE, _as_long(style & ~WS_CAPTION & ~0x00040000))  # also no thick frame = no Windows shadow; the page draws its own resize edges
         u.SetWindowPos(hwnd, None, 0, 0, 0, 0, SWP_NOSIZE | SWP_NOMOVE | SWP_NOZORDER | SWP_FRAMECHANGED)
         _start_size_guard(hwnd)
         _start_minimize_anim(hwnd)   # fly into the taskbar button (no-op if animations are off)
@@ -3057,7 +3114,7 @@ def _set_window_icon() -> None:
         try:
             dwm = ctypes.windll.dwmapi
             for attr, val in ((35, 0x090706),   # DWMWA_CAPTION_COLOR
-                              (34, 0x090706),   # DWMWA_BORDER_COLOR
+                              (34, 0xFFFFFFFE),   # DWMWA_BORDER_COLOR = none (no 1px line around the window)
                               (38, 1)):         # DWMWA_SYSTEMBACKDROP_TYPE = none
                 dwm.DwmSetWindowAttribute(hwnd, attr, ctypes.byref(ctypes.c_int(val)), 4)
         except Exception as exc:
@@ -3100,7 +3157,7 @@ def _keep_links_inside(api_obj) -> None:
             except Exception:
                 pass
             title = getattr(self.pywebview_window, "title", "")
-            if title == "Aura":
+            if title == "Atlas":
                 api_obj._queue_open(uri)  # the page shows it in the browser pane
             else:
                 self.load_url(uri)         # stay in the same view
@@ -3134,7 +3191,7 @@ def _theme() -> str:
 
 
 def _ensure_shortcut() -> None:
-    """Put an Aura icon on the desktop if there is none, and fix an old one that lacks the Aura app id/icon
+    """Put an Atlas icon on the desktop if there is none, and fix an old one that lacks the Atlas app id/icon
     (installed copies have make_shortcut.ps1)."""
     try:
         script = ROOT / "make_shortcut.ps1"
@@ -3149,7 +3206,7 @@ _instance_lock = None
 
 
 def _already_running() -> bool:
-    """One Aura per install folder: if it is open already, bring that window to the front and say so."""
+    """One Atlas per install folder: if it is open already, bring that window to the front and say so."""
     global _instance_lock
     try:
         import hashlib
@@ -3160,7 +3217,7 @@ def _already_running() -> bool:
         if ctypes.GetLastError() != 183:  # 183 = the mutex existed already
             return False
         u = ctypes.windll.user32
-        hwnd = u.FindWindowW(None, "Aura")
+        hwnd = u.FindWindowW(None, "Atlas")
         if hwnd:
             if u.IsIconic(hwnd):
                 u.ShowWindow(hwnd, 9)  # restore a minimized window
@@ -3202,7 +3259,7 @@ def main() -> None:
         _log("control server failed: " + repr(exc))
 
     api_obj._main_win = webview.create_window(
-        "Aura",
+        "Atlas",
         url=str(ROOT / "app" / ("web_hermes" if _theme() == "hermes" else "web") / "index.html"),
         js_api=api_obj,
         width=width,
@@ -3217,7 +3274,7 @@ def main() -> None:
         webview.start(_set_window_icon)
     finally:
         api_obj._shutdown()
-        if api_obj._restarting:  # the new Aura is waiting for this process to end: do not linger
+        if api_obj._restarting:  # the new Atlas is waiting for this process to end: do not linger
             os._exit(0)
 
 

@@ -1,5 +1,5 @@
 /* =====================================================================
-   Aura - Hermes Agent style UI (pass 8: final polish)
+   Atlas - Hermes Agent style UI (pass 8: final polish)
    Theme follows the system by default (data-theme="auto"); "light" / "dark"
    when the user picks one. Light is the warm Hermes paper look (h2.png).
    Layout: icon rail 44 | chat list 264 | chat (720 column) | workspace 320+.
@@ -171,7 +171,7 @@ kbd { font-family: var(--mono); font-size: 10.5px; line-height: 1; color: var(--
 #topstrip button { width: 28px; height: 28px; display: grid; place-items: center; border-radius: var(--r2); color: var(--dim); }
 #topstrip button:hover { color: var(--hi); background: var(--hover); }
 #topstrip svg { width: var(--icon); height: var(--icon); }
-/* thin progress hairline while Aura works */
+/* thin progress hairline while Atlas works */
 #topstrip::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 1px; opacity: 0; pointer-events: none;
   background: linear-gradient(90deg, transparent, var(--acc), transparent) no-repeat; background-size: 30% 100%; transition: opacity .3s ease; }
 body.busy #topstrip::after { opacity: .9; animation: hairBg 1.6s ease-in-out infinite; }
@@ -1032,7 +1032,7 @@ body.calm .upd-bar i { width: 100%; opacity: .5; }
   body:has(#preview.open) #hint { display: none; }
 }
 
-/* answers carry no "Aura" label/avatar above them, so the text sits flush left like the rest of the thread */
+/* answers carry no "Atlas" label/avatar above them, so the text sits flush left like the rest of the thread */
 .msg.assistant > .badge { display: none; }
 .msg.assistant .bubble { padding-left: 0; }
 .msg.assistant .bubble.error { margin-left: 0; }

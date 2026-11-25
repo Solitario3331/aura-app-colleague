@@ -1,4 +1,4 @@
-"""Short, friendly step lines for the live "what Aura is doing" list.
+"""Short, friendly step lines for the live "what Atlas is doing" list.
 
 agent_step(name, args)  -> {"kind": ..., "text": ...} for a local-helper tool call (agent.py)
 claude_step(line)       -> the same for a stream-json line with a tool call, or None

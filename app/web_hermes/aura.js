@@ -1,5 +1,5 @@
 /* =====================================================================
-   Aura - the page logic.
+   Atlas - the page logic.
    Talks to the Python side through window.pywebview.api (see app/app.py).
    Sections: basics, rich text, messages + status line, chats list,
    pictures, sending, modes, composer, dialog, browser pane, window,
@@ -118,10 +118,10 @@
   var calmMotion = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
 
   var MODES = [
-    { id: "claude", label: "Aura", tip: "Smart and thorough: Aura plans and hands the work to the helper" },
-    { id: "auto", label: "Quick", tip: "Fast, no thinking: Aura hands the work to the helper" },
+    { id: "claude", label: "Atlas", tip: "Smart and thorough: Atlas plans and hands the work to the helper" },
+    { id: "auto", label: "Quick", tip: "Fast, no thinking: Atlas hands the work to the helper" },
     { id: "qwen", label: "Local", tip: "Runs only on this PC, free" },
-    { id: "polish", label: "Polish", tip: "Aura makes the website of this chat look great" }
+    { id: "polish", label: "Polish", tip: "Atlas makes the website of this chat look great" }
   ];
   var mode = "claude";
 
@@ -355,9 +355,9 @@
       var again = document.createElement("button"); again.type = "button"; again.className = "media-btn";
       again.innerHTML = "<span>Try again</span>"; again.addEventListener("click", retryIt); box.appendChild(again);
       var ask = document.createElement("button"); ask.type = "button"; ask.className = "media-btn";
-      ask.innerHTML = "<span>Ask Aura to show it another way</span>";
+      ask.innerHTML = "<span>Ask Atlas to show it another way</span>";
       ask.addEventListener("click", function () {
-        if (busy) { toast("Wait for Aura to finish first, or press Stop."); return; }
+        if (busy) { toast("Wait for Atlas to finish first, or press Stop."); return; }
         input.value = "The " + (isVid ? "video" : "picture") + " " + name + " did not show in the chat. Please show it another way.";
         input.dispatchEvent(new Event("input")); send();
       });
@@ -489,13 +489,13 @@
     putInInput("Re: “" + t + "”\n");
   }
   function editMessage(b) {
-    if (busy) { toast("Wait for Aura to finish first, or press Stop."); return; }
+    if (busy) { toast("Wait for Atlas to finish first, or press Stop."); return; }
     var t = rawOf(b).replace(/^\(edited\) /, "").replace(/\nAttached: [^\n]*$/, "").trim();
     if (!t) return;
     editing = true; putInInput(t);
   }
   function tryAgain() {
-    if (busy) { toast("Wait for Aura to finish first, or press Stop."); return; }
+    if (busy) { toast("Wait for Atlas to finish first, or press Stop."); return; }
     if (pics.length || docs.length) { toast("Send or remove your attachment first."); return; }
     var draft = input.value;
     input.value = "Please try again with a different answer.";
@@ -523,8 +523,8 @@
     if (last && last.classList.contains("assistant") && last.querySelector(".act.regen")) last.classList.add("last-reply");
   }
   if (window.MutationObserver) new MutationObserver(markLastReply).observe(messagesEl, { childList: true });
-  /* The input says "Reply to Aura..." as soon as the chat has messages (like Claude), "Message Aura..." on an empty chat. */
-  var basePlaceholder = input.placeholder || "Message Aura...";
+  /* The input says "Reply to Atlas..." as soon as the chat has messages (like Claude), "Message Atlas..." on an empty chat. */
+  var basePlaceholder = input.placeholder || "Message Atlas...";
   var IDEAS = [
     "Build me a tiny website about my cat...", "Show me what takes the most space in my Downloads folder...",
     "Give me a fun fact I can tell my friends...", "Plan a surprise date night...", "Ask me a silly question, I dare you...",
@@ -541,7 +541,7 @@
   }
   function paintPlaceholder() {
     var want;
-    if (messagesEl.querySelector(".msg")) { emptyIdea = ""; want = basePlaceholder.replace(/^Message Aura/, "Reply to Aura"); }
+    if (messagesEl.querySelector(".msg")) { emptyIdea = ""; want = basePlaceholder.replace(/^Message Aura/, "Reply to Atlas"); }
     else { if (!emptyIdea) emptyIdea = pickIdea(); want = emptyIdea; }
     if (input.placeholder !== want) input.placeholder = want;
   }
@@ -594,7 +594,7 @@
     if (role === "assistant") {
       var badge = document.createElement("div");
       badge.className = "badge";
-      badge.textContent = "Aura";
+      badge.textContent = "Atlas";
       wrap.appendChild(badge);
     }
     var b = document.createElement("div");
@@ -779,7 +779,7 @@
     Array.prototype.forEach.call($("sessionList").querySelectorAll(".session"), function (r) {
       var on = !!running[r.dataset.id];
       r.classList.toggle("working", on);
-      r.setAttribute("aria-label", (r.title || "Chat") + (on ? " (Aura is working on it)" : ""));
+      r.setAttribute("aria-label", (r.title || "Chat") + (on ? " (Atlas is working on it)" : ""));
     });
   }
   function setRunning(sid, on) {
@@ -792,7 +792,7 @@
   /* Only for things that must wait for every chat (update, delete all). */
   function guardBusy() {
     if (!anyRunning()) return false;
-    toast("Aura is still working on a chat. Wait for it to finish, or press Stop.");
+    toast("Atlas is still working on a chat. Wait for it to finish, or press Stop.");
     return true;
   }
   /* Which chats work right now on the Python side: dots in the chat list, and a safety net if the open
@@ -820,11 +820,11 @@
     row.setAttribute("role", "button");
     if (active) row.setAttribute("aria-current", "true");
     row.title = title;
-    row.setAttribute("aria-label", title + (working ? " (Aura is working on it)" : ""));
+    row.setAttribute("aria-label", title + (working ? " (Atlas is working on it)" : ""));
     var span = document.createElement("span");
     span.textContent = title;
     var dot = document.createElement("i");
-    dot.className = "run-dot"; dot.setAttribute("aria-hidden", "true"); dot.title = "Aura is working on this chat";
+    dot.className = "run-dot"; dot.setAttribute("aria-hidden", "true"); dot.title = "Atlas is working on this chat";
     var del = document.createElement("button");
     del.type = "button"; del.className = "del"; del.textContent = "×";
     del.title = "Delete chat";
@@ -926,7 +926,7 @@
       tm.textContent = ms ? "Last message " + ago(ms) : "";
       main.appendChild(t); main.appendChild(tm);
       r.appendChild(main);
-      if (running[s.id]) { var dot = document.createElement("i"); dot.className = "hv-dot"; dot.title = "Aura is working on this chat"; r.appendChild(dot); }
+      if (running[s.id]) { var dot = document.createElement("i"); dot.className = "hv-dot"; dot.title = "Atlas is working on this chat"; r.appendChild(dot); }
       var del = document.createElement("button"); del.type = "button"; del.className = "hv-del"; del.textContent = "×";
       del.title = "Delete chat"; del.setAttribute("aria-label", "Delete chat " + title);
       del.addEventListener("click", function (ev) { ev.stopPropagation(); deleteChat(s); });
@@ -983,7 +983,7 @@
   }, true);
   function deleteChat(s) {
     var text = "“" + (s.title || "New chat") + "” and all its messages will be removed. This can’t be undone.";
-    if (running[s.id]) text = "Aura is still working on this chat; that work stops. " + text;
+    if (running[s.id]) text = "Atlas is still working on this chat; that work stops. " + text;
     askConfirm({ title: "Delete this chat?", text: text, ok: "Delete", danger: true }).then(function (yes) {
       if (!yes) return;
       if (view && view.sid === s.id) view.detach();
@@ -1006,7 +1006,7 @@
       histRender();
     }).catch(function () { toast("Could not load your chats."); });
   }
-  /* A saved message. The internal [Who] tag is dropped; [App] = an error Aura showed, [Note] = "Stopped." */
+  /* A saved message. The internal [Who] tag is dropped; [App] = an error Atlas showed, [Note] = "Stopped." */
   function showStored(m) {
     var raw = m.text || "";
     if (m.role === "user") { addBubble("user", raw); return; }
@@ -1038,13 +1038,13 @@
     { n: "btw", a: "<question>", d: "Ask a quick side question. Your chat and any running work stay untouched.", args: true },
     { n: "new", al: ["clear"], d: "Start a new chat" },
     { n: "mode", a: "aura | quick | local | polish", d: "Switch mode", args: true },
-    { n: "think", al: ["effort"], a: "off | low | medium | high", d: "Change how much Aura thinks", args: true },
+    { n: "think", al: ["effort"], a: "off | low | medium | high", d: "Change how much Atlas thinks", args: true },
     { n: "chats", al: ["resume", "search"], d: "Open your chat history" },
-    { n: "copy", d: "Copy Aura's last answer" },
+    { n: "copy", d: "Copy Atlas's last answer" },
     { n: "export", d: "Save this chat as a file" },
     { n: "preview", d: "Open or close the preview" },
     { n: "settings", d: "Open settings" },
-    { n: "stop", d: "Stop what Aura is doing" },
+    { n: "stop", d: "Stop what Atlas is doing" },
     { n: "help", d: "Show all commands" }
   ];
   function slashFind(name) {
@@ -1117,7 +1117,7 @@
     copy: function () {
       var all = messagesEl.querySelectorAll(".msg.assistant .bubble:not(.error):not(.note)"), b = all[all.length - 1];
       if (!b) { toast("Nothing to copy yet."); return; }
-      copyText(rawOf(b)).then(function () { toast("Copied Aura's last answer."); });
+      copyText(rawOf(b)).then(function () { toast("Copied Atlas's last answer."); });
     },
     "export": function () {
       if (!api || !currentId) { toast("Open a chat first."); return; }
@@ -1356,20 +1356,20 @@
   }
 
   /* ---------- sending ---------- */
-  /* While Aura works, look for a website it creates or changes (only while busy, no overlapping calls). */
+  /* While Atlas works, look for a website it creates or changes (only while busy, no overlapping calls). */
   function watchSites(since) {
     var timer = setInterval(function () { checkSite(since); }, 4000);
     return function () { clearInterval(timer); checkSite(since); };
   }
 
-  /* ---------- Details: a terminal-style log of what Aura really runs (opens only when you press it) ---------- */
+  /* ---------- Details: a terminal-style log of what Atlas really runs (opens only when you press it) ---------- */
   function detailsWidget() {
     var rows = [], seq = 0, open = false, MAXROWS = 200;
     var root = document.createElement("div"); root.className = "dt-root";
     var btn = document.createElement("button"); btn.type = "button"; btn.className = "dt-btn"; btn.setAttribute("aria-expanded", "false");
     var panel = document.createElement("div"); panel.className = "dt-panel"; panel.hidden = true;
     var bar = document.createElement("div"); bar.className = "dt-bar";
-    var ttl = document.createElement("span"); ttl.textContent = "What Aura is doing";
+    var ttl = document.createElement("span"); ttl.textContent = "What Atlas is doing";
     var copy = document.createElement("button"); copy.type = "button"; copy.className = "dt-copy"; copy.textContent = "Copy log";
     bar.appendChild(ttl); bar.appendChild(copy);
     var list = document.createElement("div"); list.className = "dt-list"; list.setAttribute("role", "log"); list.tabIndex = 0;
@@ -1423,7 +1423,7 @@
     };
   }
 
-  /* The live work of the open chat: status line with timer, streamed text (Aura mode), step lines
+  /* The live work of the open chat: status line with timer, streamed text (Atlas mode), step lines
      ("Reading notes.pdf", "Saving index.html"...), then the answer. run = { kind: "aura"|"job", phase,
      elapsed (s), items (what already happened, when coming back to the chat) }. Returns a view:
      start() begins polling, stop() asks Python to stop, detach() only stops watching (the work goes on),
@@ -1472,9 +1472,9 @@
       if (raf) { cancelAnimationFrame(raf); flush(); } // draw the last text first
       if (cur && !cur.textContent.trim() && cur.parentNode) cur.parentNode.remove(); // never leave an empty bubble
       if (kind === "job") st.settle(); // the progress block stays as one quiet summary line above the answer
-      var keepDt = (kind === "aura" && dt && dt.count()) ? dt.detach() : null; // Aura mode: the log stays under the answer
+      var keepDt = (kind === "aura" && dt && dt.count()) ? dt.detach() : null; // Atlas mode: the log stays under the answer
       close(false);
-      if (e.t === "closed") addBubble("assistant", "Aura stopped unexpectedly. Please send your message again.", "error");
+      if (e.t === "closed") addBubble("assistant", "Atlas stopped unexpectedly. Please send your message again.", "error");
       else if (e.note) addBubble("assistant", e.text || "Stopped.", "note");
       else if (e.error) addBubble("assistant", e.text || "Something went wrong. Please try again.", "error");
       else if (kind === "job") addBubble("assistant", e.text || "No answer.");
@@ -1515,7 +1515,7 @@
     v.start = function () { if (!finished && !v.live) { v.live = true; poll(); } return v; };
     v.stopped = function () { return !!stopAsked; };
     v.fail = function (msg) {
-      if (close(false)) { addBubble("assistant", msg || "Aura could not start. Please try again.", "error"); refreshSessions(); }
+      if (close(false)) { addBubble("assistant", msg || "Atlas could not start. Please try again.", "error"); refreshSessions(); }
     };
     v.detach = function () { close(true); };
     v.stop = function () {
@@ -1544,7 +1544,7 @@
     if (!api || !currentId) { toast("One moment, the chat is still loading."); return; }
     var images = pics.slice(), files = docs.slice(), shown = text;
     if (editing) { editing = false; if (text) { text = "(edited) " + text; shown = text; } }
-    if (images.length && mode === "polish") { toast("Pictures work in Aura, Quick and Local modes."); return; }
+    if (images.length && mode === "polish") { toast("Pictures work in Atlas, Quick and Local modes."); return; }
     pics = []; docs = []; renderThumbs();
     input.value = "";
     input.dispatchEvent(new Event("input")); // re-sizes the box and resets the send button colour
@@ -1560,7 +1560,7 @@
     startWork(currentId, mode, text, images);
     setTimeout(refreshSessions, 700); // the chat is listed once its first message is saved
   }
-  /* Aura mode streams from the chat's own background process; the other modes run as a background job.
+  /* Atlas mode streams from the chat's own background process; the other modes run as a background job.
      Either way the answer is saved into THIS chat, even if you switch to another one meanwhile. */
   function startWork(sid, m, text, images) {
     pushThink();
@@ -1568,10 +1568,10 @@
                              phase: m === "polish" ? "polish" : (images.length ? "look" : "think") });
     var imgs = images.length ? images : null;
     ((m === "claude" || m === "auto") ? api.chat_send(sid, text, imgs, m) : api.job_start(sid, text, m, imgs)).then(function (r) {
-      if (!r || !r.ok) { v.fail((r && r.error) || "Aura could not start. Please try again."); return; }
+      if (!r || !r.ok) { v.fail((r && r.error) || "Atlas could not start. Please try again."); return; }
       if (v.stopped()) api.chat_stop(sid).catch(noop); // Stop was pressed while it was starting
       v.start();
-    }).catch(function () { v.fail("Aura could not start. Please try again."); });
+    }).catch(function () { v.fail("Atlas could not start. Please try again."); });
   }
 
 
@@ -1590,7 +1590,7 @@
     b.setAttribute("aria-label", "Thinking: " + name + (locked ? "" : ". Click to change."));
     b.classList.toggle("on", lv !== "off");
     b.disabled = locked;
-    b.title = mode === "auto" ? "Quick never thinks" : mode === "polish" ? "Polish always thinks" : "Click to change how much Aura thinks";
+    b.title = mode === "auto" ? "Quick never thinks" : mode === "polish" ? "Polish always thinks" : "Click to change how much Atlas thinks";
   }
   function pushThink() { try { if (api && api.set_think) api.set_think(thinkLevel); } catch (e) {} }
   (function initThink() {
@@ -1687,7 +1687,7 @@
     });
   }
 
-  /* ---------- browser pane (right side): websites Aura builds + normal browsing ---------- */
+  /* ---------- browser pane (right side): websites Atlas builds + normal browsing ---------- */
   var HOME = "https://www.bing.com/";
   var lastSite = null, hist = [], hpos = -1, curUrl = "", navSeq = 0;
   var pane = $("preview"), frame = $("pvFrame"), host = $("pvOverlayHost");
@@ -1726,7 +1726,7 @@
     setTimeout(function () { frame.src = u; }, 30);
   }
 
-  /* ---- video control: Aura can play / pause / mute the YouTube video in the pane and read its REAL state ---- */
+  /* ---- video control: Atlas can play / pause / mute the YouTube video in the pane and read its REAL state ---- */
   var ytInfo = { paused: null, muted: false, time: 0, seen: 0 };
   frame.setAttribute("allow", "autoplay; encrypted-media; fullscreen; picture-in-picture");
   function ytPost(obj) { try { frame.contentWindow.postMessage(JSON.stringify(obj), "*"); } catch (e) { /* not loaded yet */ } }
@@ -1754,7 +1754,7 @@
     window.__mres = null;
     function done(o) { window.__mres = JSON.stringify(o); }
     if (typeof ovOn !== "undefined" && ovOn) { done({ use: "overlay" }); return; } // a real browser view: the app handles that one
-    if (!frame || frame.hidden || !/youtube\.com\/embed\//.test(frame.src || "")) { done({ ok: false, status: "There is no video in the Aura browser." }); return; }
+    if (!frame || frame.hidden || !/youtube\.com\/embed\//.test(frame.src || "")) { done({ ok: false, status: "There is no video in the Atlas browser." }); return; }
     var cmd = { play: "playVideo", pause: "pauseVideo", mute: "mute", unmute: "unMute" }[action];
     if (action === "toggle") cmd = ytInfo.paused ? "playVideo" : "pauseVideo";
     ytListen();
@@ -1867,7 +1867,7 @@
   function newestSite() {
     if (!api) { toast("One moment, still loading."); return; }
     api.site_check(Date.now() / 1000 - 86400).then(function (r) {
-      if (r && r.found) showSite(r, true); else toast("No website found yet. Ask Aura to build one.");
+      if (r && r.found) showSite(r, true); else toast("No website found yet. Ask Atlas to build one.");
     }).catch(function () { toast("Could not look for a website."); });
   }
   function showingSite() { return lastSite && curUrl.indexOf(lastSite.url) === 0; }
@@ -1878,7 +1878,7 @@
   }
   function closeBrowser() { navSeq++; ovHide(); setLoading(false); setPaneOpen(false); }
 
-  /* ---------- preview tools: shown while a website Aura built is open (screen size, auto-reload) ---------- */
+  /* ---------- preview tools: shown while a website Atlas built is open (screen size, auto-reload) ---------- */
   var DEVS = [
     ["phone", "Phone", '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7.5" y="3" width="9" height="18" rx="2"/><path d="M11 18h2"/></svg>'],
     ["tablet", "Tablet", '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M11 18h2"/></svg>'],
@@ -1975,6 +1975,76 @@
     e.preventDefault();
     api.win_drag().then(syncMax).catch(noop);
   }
+
+  // resize edges: the window has no Windows frame (so no shadow); thin invisible strips resize it instead
+  (function () {
+    var st = document.createElement("style");
+    st.textContent = ".rz{position:fixed;z-index:2147483000;-webkit-app-region:no-drag}.rz-n,.rz-s{left:8px;right:8px;height:5px}.rz-n{top:0;cursor:ns-resize}.rz-s{bottom:0;cursor:ns-resize}.rz-e,.rz-w{top:8px;bottom:8px;width:5px}.rz-e{right:0;cursor:ew-resize}.rz-w{left:0;cursor:ew-resize}.rz-ne,.rz-nw,.rz-se,.rz-sw{width:10px;height:10px}.rz-ne{top:0;right:0;cursor:nesw-resize}.rz-sw{bottom:0;left:0;cursor:nesw-resize}.rz-nw{top:0;left:0;cursor:nwse-resize}.rz-se{bottom:0;right:0;cursor:nwse-resize}body.win-max .rz{display:none}";
+    document.head.appendChild(st);
+    ["n", "s", "e", "w", "ne", "nw", "se", "sw"].forEach(function (k) {
+      var d = document.createElement("div");
+      d.className = "rz rz-" + k;
+      d.addEventListener("mousedown", function (e) {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        try { window.pywebview.api.win_resize(k); } catch (x) { /* ignore */ }
+      });
+      document.body.appendChild(d);
+    });
+  })();
+
+  // right-click menu: Cut / Copy / Paste / Select all (the plain window has none)
+  (function () {
+    var st = document.createElement("style");
+    st.textContent = "#ctxMenu{position:fixed;z-index:2147483600;min-width:150px;padding:4px;border-radius:8px;background:var(--overlay,#1a1b1f);border:1px solid var(--line2,rgba(255,255,255,.12));box-shadow:0 8px 24px rgba(0,0,0,.35);font:13px var(--font-ui,system-ui,sans-serif);color:var(--text,#ddd)}#ctxMenu button{display:block;width:100%;text-align:left;padding:6px 12px;border:0;border-radius:5px;background:none;color:inherit;font:inherit;cursor:default}#ctxMenu button:hover:not(:disabled){background:var(--hover,rgba(255,255,255,.08))}#ctxMenu button:disabled{opacity:.4}";
+    document.head.appendChild(st);
+    var menu = null;
+    function close() { if (menu) { menu.remove(); menu = null; } }
+    function insert(el, text) {
+      el.focus();
+      if (!document.execCommand("insertText", false, text) && "value" in el) {
+        var a = el.selectionStart || 0, b = el.selectionEnd || 0;
+        el.value = el.value.slice(0, a) + text + el.value.slice(b);
+        el.selectionStart = el.selectionEnd = a + text.length;
+        el.dispatchEvent(new Event("input", { bubbles: true }));
+      }
+    }
+    document.addEventListener("contextmenu", function (e) {
+      var t = e.target, editable = !!(t && (t.tagName === "TEXTAREA" || (t.tagName === "INPUT" && /^(text|search|url|email|password|)$/i.test(t.type)) || t.isContentEditable));
+      var sel = String(window.getSelection ? window.getSelection() : "");
+      if (editable && "selectionStart" in t && t.selectionStart !== t.selectionEnd) sel = t.value.slice(t.selectionStart, t.selectionEnd);
+      if (!editable && !sel) return;
+      e.preventDefault();
+      close();
+      menu = document.createElement("div");
+      menu.id = "ctxMenu";
+      function item(label, enabled, fn) {
+        var b = document.createElement("button");
+        b.type = "button"; b.textContent = label; b.disabled = !enabled;
+        b.addEventListener("mousedown", function (ev) { ev.preventDefault(); });
+        b.addEventListener("click", function () { close(); fn(); });
+        menu.appendChild(b);
+      }
+      var copyIt = function () {
+        if (!document.execCommand("copy") && navigator.clipboard) navigator.clipboard.writeText(sel).catch(function () {});
+      };
+      if (editable) item("Cut", !!sel, function () { t.focus(); if (!document.execCommand("cut") && navigator.clipboard) { navigator.clipboard.writeText(sel).catch(function () {}); document.execCommand("delete"); } });
+      item("Copy", !!sel, copyIt);
+      if (editable) item("Paste", true, function () {
+        var api = window.pywebview && window.pywebview.api;
+        if (api && api.clipboard_text) api.clipboard_text().then(function (s) { if (s) insert(t, s); }).catch(function () {});
+        else if (navigator.clipboard && navigator.clipboard.readText) navigator.clipboard.readText().then(function (s) { if (s) insert(t, s); }).catch(function () {});
+      });
+      if (editable) item("Select all", true, function () { t.focus(); if (t.select) t.select(); else document.execCommand("selectAll"); });
+      document.body.appendChild(menu);
+      var r = menu.getBoundingClientRect();
+      menu.style.left = Math.max(4, Math.min(e.clientX, innerWidth - r.width - 4)) + "px";
+      menu.style.top = Math.max(4, Math.min(e.clientY, innerHeight - r.height - 4)) + "px";
+    });
+    window.addEventListener("mousedown", function (e) { if (menu && !menu.contains(e.target)) close(); }, true);
+    window.addEventListener("blur", close);
+    document.addEventListener("keydown", function (e) { if (e.key === "Escape") close(); });
+  })();
   function toggleMax() { if (api) api.win_max().then(showMax).catch(noop); }
   var maxTimer = 0;
   window.addEventListener("resize", function () { clearTimeout(maxTimer); maxTimer = setTimeout(syncMax, 250); });
@@ -2009,7 +2079,7 @@
       box.classList.remove("pop"); void box.offsetWidth; box.classList.add("pop"); // play the pop-up animation
     }
     box.querySelector(".rm-x").addEventListener("click", markSeen);
-    // she has read it when she starts typing, or after 15 seconds with Aura in front of her; then it is gone for good
+    // she has read it when she starts typing, or after 15 seconds with Atlas in front of her; then it is gone for good
     var inEl = $("input"); if (inEl) inEl.addEventListener("input", function () { if (showing) markSeen(); });
     setInterval(function () { if (showing && !splashUp() && document.hasFocus() && ++focusSecs >= 15) markSeen(); }, 1000);
     function load() {
@@ -2043,7 +2113,7 @@
       ["Settings", "", function () { $("settingsBtn").click(); }],
       ["Help and commands", "/help", function () { helpCard(); }],
       ["-"],
-      ["Exit Aura", "", function () { if (api) api.win_close().catch(noop); }]
+      ["Exit Atlas", "", function () { if (api) api.win_close().catch(noop); }]
     ];
     items.forEach(function (it) {
       if (it[0] === "-") { var hr = document.createElement("div"); hr.className = "am-sep"; menu.appendChild(hr); return; }
@@ -2268,7 +2338,7 @@
     var err = updOv.classList.contains("err") || updOv.classList.contains("ask");
     if (err && e.key === "Escape") { e.preventDefault(); e.stopPropagation(); updHide(); return; }
     if (err && updOv.contains(e.target) && (e.key === "Tab" || e.key === "Enter" || e.key === " ")) return;
-    e.preventDefault(); e.stopPropagation(); /* nothing else while Aura updates */
+    e.preventDefault(); e.stopPropagation(); /* nothing else while Atlas updates */
   }
   function updShow() {
     if (updOv) return updOv;
@@ -2276,7 +2346,7 @@
     updOv.setAttribute("role", "alertdialog"); updOv.setAttribute("aria-modal", "true");
     updOv.setAttribute("aria-labelledby", "updTitle"); updOv.setAttribute("aria-describedby", "updStep");
     updOv.innerHTML = '<div class="upd-card" tabindex="-1"><div class="upd-ring" aria-hidden="true"></div>' +
-      '<h3 id="updTitle">Updating Aura</h3><p id="updStep" aria-live="polite"></p>' +
+      '<h3 id="updTitle">Updating Atlas</h3><p id="updStep" aria-live="polite"></p>' +
       '<div class="upd-bar" aria-hidden="true"><i></i></div>' +
       '<div class="upd-actions" hidden><button type="button" class="set-btn" id="updClose">Close</button>' +
       '<button type="button" class="set-btn primary" id="updRetry">Retry</button></div></div>';
@@ -2295,7 +2365,7 @@
     document.removeEventListener("keydown", updKey, true);
     Array.prototype.forEach.call(document.querySelectorAll("[data-upd-inert]"), function (el) { el.inert = false; el.removeAttribute("data-upd-inert"); });
     updOv.remove(); updOv = null;
-    if (updPending) toast("Update installed. Restart Aura when you are ready (Settings > Update).");
+    if (updPending) toast("Update installed. Restart Atlas when you are ready (Settings > Update).");
     if (!document.querySelector(".modal-back")) ovResume();
     var b = document.querySelector("#setUpBtn");
     if (b) b.focus(); else focusInput();
@@ -2303,7 +2373,7 @@
   function updStep(text, failed) {
     var o = updShow();
     o.classList.toggle("err", !!failed);
-    o.querySelector("#updTitle").textContent = failed ? "Update did not finish" : "Updating Aura";
+    o.querySelector("#updTitle").textContent = failed ? "Update did not finish" : "Updating Atlas";
     o.querySelector("#updStep").textContent = text;
     o.querySelector(".upd-actions").hidden = !failed;
     if (failed) o.querySelector("#updRetry").focus();
@@ -2323,15 +2393,15 @@
       askRestart();
     }).catch(function (r) {
       updBusy = false;
-      updStep((r && r.status) || "The update did not finish. Aura is still running.", true);
+      updStep((r && r.status) || "The update did not finish. Atlas is still running.", true);
     });
   }
-  /* The update is installed. Let the person choose: restart now, or later (the new version starts the next time Aura opens). */
+  /* The update is installed. Let the person choose: restart now, or later (the new version starts the next time Atlas opens). */
   function askRestart() {
     var o = updShow();
     o.classList.remove("err"); o.classList.add("ask");
     o.querySelector("#updTitle").textContent = "Update installed";
-    o.querySelector("#updStep").textContent = "Restart Aura to start using the new version, or do it later.";
+    o.querySelector("#updStep").textContent = "Restart Atlas to start using the new version, or do it later.";
     o.querySelector(".upd-actions").hidden = false;
     o.querySelector("#updClose").textContent = "Later";
     o.querySelector("#updRetry").textContent = "Restart now";
@@ -2345,24 +2415,24 @@
     if (!updOv && guardBusy()) return; /* never cut off an answer that is still coming in */
     updBusy = true; if (!updOv) ovSuspend();
     var o = updShow(); o.classList.remove("ask");
-    updStep("Restarting Aura...");
+    updStep("Restarting Atlas...");
     api.update_restart().then(function (r) {
       if (!r || !r.ok) throw r;
-      /* this window closes in a moment and the new Aura opens by itself; the overlay stays until then */
+      /* this window closes in a moment and the new Atlas opens by itself; the overlay stays until then */
     }).catch(function (r) {
       updBusy = false;
       o.querySelector("#updClose").textContent = "Close"; o.querySelector("#updRetry").textContent = "Retry";
-      updStep((r && r.status) || "Aura could not restart. It is still running.", true);
+      updStep((r && r.status) || "Atlas could not restart. It is still running.", true);
     });
   }
   function paintUpdateRow(btn, note) {
     if (updPending) {
-      note.textContent = "Version " + updPending + " is installed. Restart Aura to start using it.";
+      note.textContent = "Version " + updPending + " is installed. Restart Atlas to start using it.";
       btn.textContent = "Restart now"; btn.classList.add("primary");
       return;
     }
     if (!updAvail) return;
-    note.textContent = "Version " + updAvail + " is ready. Aura restarts by itself afterwards.";
+    note.textContent = "Version " + updAvail + " is ready. Atlas restarts by itself afterwards.";
     btn.textContent = "Update now"; btn.classList.add("primary");
   }
   function checkForUpdates(btn, note) {
@@ -2390,7 +2460,7 @@
     updPopHide();
     var p = document.createElement("div"); p.id = "updPop"; p.setAttribute("role", "status");
     p.innerHTML = '<div class="up-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 4v11M7 11l5 5 5-5M5 20h14"/></svg></div>' +
-      '<div class="up-txt"><b>Update available</b><span>Aura ' + (v === "new" ? "has a new version" : "v" + String(v).replace(/[^0-9a-zA-Z.\-]/g, "")) + ' is ready.</span></div>' +
+      '<div class="up-txt"><b>Update available</b><span>Atlas ' + (v === "new" ? "has a new version" : "v" + String(v).replace(/[^0-9a-zA-Z.\-]/g, "")) + ' is ready.</span></div>' +
       '<button type="button" class="up-go">Update now</button><button type="button" class="up-later" aria-label="Later">Later</button>';
     document.body.appendChild(p);
     p.querySelector(".up-go").addEventListener("click", function () {
@@ -2415,7 +2485,7 @@
     }).catch(noop);
     setTimeout(function () { /* quiet check, never installs anything by itself */
       quietCheck();
-      setInterval(quietCheck, 30 * 60 * 1000); /* and again every 30 minutes while Aura stays open */
+      setInterval(quietCheck, 30 * 60 * 1000); /* and again every 30 minutes while Atlas stays open */
     }, 5000);
   }
 
@@ -2431,22 +2501,22 @@
       '<div class="settings-head"><h3 id="setTitle">Settings</h3><button type="button" class="settings-x" aria-label="Close">' + X + '</button></div>' +
       '<div class="settings-body">' +
       '<section class="set-sec"><h4>Updates</h4>' +
-        '<div class="set-row"><div class="t"><b>Aura <span id="setVer"></span></b><small id="setUpNote">See if a newer version is ready.</small></div><button type="button" class="set-btn" id="setUpBtn">Check now</button></div></section>' +
+        '<div class="set-row"><div class="t"><b>Atlas <span id="setVer"></span></b><small id="setUpNote">See if a newer version is ready.</small></div><button type="button" class="set-btn" id="setUpBtn">Check now</button></div></section>' +
       '<section class="set-sec"><h4>Look</h4>' +
         '<div class="set-row"><div class="t"><b>Theme</b><small>System follows your Windows setting.</small></div><div class="seg" id="setTheme" role="group" aria-label="Theme"></div></div>' +
         '<div class="set-row"><div class="t"><b>Text size</b><small>Size of the words in the chat.</small></div><div class="seg" id="setSize" role="group" aria-label="Text size"></div></div>' +
         '<div class="set-row"><div class="t"><b>Calm effects</b><small>Turns off fades and other small animations.</small></div><button type="button" class="sw" id="setCalm" role="switch" aria-label="Calm effects"></button></div></section>' +
       '<section class="set-sec"><h4>Chat</h4>' +
         '<div class="set-row"><div class="t"><b>Enter sends the message</b><small>Off: Enter makes a new line and Ctrl+Enter sends.</small></div><button type="button" class="sw" id="setEnter" role="switch" aria-label="Enter sends the message"></button></div>' +
-        '<div class="set-row"><div class="t"><b>Start Aura in mode</b><small>The mode that is picked when Aura opens.</small></div><select class="set-select" id="setMode" aria-label="Start mode"></select></div></section>' +
+        '<div class="set-row"><div class="t"><b>Start Atlas in mode</b><small>The mode that is picked when Atlas opens.</small></div><select class="set-select" id="setMode" aria-label="Start mode"></select></div></section>' +
       '<section class="set-sec"><h4>Your chats</h4>' +
         '<div class="set-row"><div class="t"><b>Save this chat as a file</b><small>A plain text file you can keep or send.</small></div><button type="button" class="set-btn" id="setExport">Save</button></div>' +
-        '<div class="set-row"><div class="t"><b>Open the chats folder</b><small>Where Aura keeps your chats on this PC.</small></div><button type="button" class="set-btn" id="setFolder">Open</button></div>' +
+        '<div class="set-row"><div class="t"><b>Open the chats folder</b><small>Where Atlas keeps your chats on this PC.</small></div><button type="button" class="set-btn" id="setFolder">Open</button></div>' +
         '<div class="set-row"><div class="t"><b>Delete all chats</b><small>Removes every chat. This can’t be undone.</small></div><button type="button" class="set-btn danger" id="setWipe">Delete all</button></div></section>' +
       '<section class="set-sec"><h4>Shortcuts</h4><div class="keys">' +
-        '<kbd>Ctrl+B</kbd><span>Show or hide the chat list</span><kbd>Esc</kbd><span>Stop Aura while it is answering</span>' +
+        '<kbd>Ctrl+B</kbd><span>Show or hide the chat list</span><kbd>Esc</kbd><span>Stop Atlas while it is answering</span>' +
         '<kbd>Enter</kbd><span>Send (or new line, see above)</span><kbd>Shift+Enter</kbd><span>New line</span></div></section>' +
-      '<section class="set-sec"><h4>About</h4><p class="set-about">Aura — your personal assistant, built by Amar &amp; Arry.</p></section>' +
+      '<section class="set-sec"><h4>About</h4><p class="set-about">Atlas — your personal assistant, built by Amar &amp; Arry.</p></section>' +
       '</div><div class="set-foot"><button type="button" class="set-btn" id="setDone">Done</button></div>';
     back.appendChild(card); document.body.appendChild(back);
     requestAnimationFrame(function () { back.classList.add("show"); });

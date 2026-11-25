@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="color-scheme" content="dark light">
-<title>Aura</title>
+<title>Atlas</title>
 <!-- theme before first paint: saved choice, else follow Windows -->
 <script>try{var t=localStorage.getItem("auraTheme");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t;}catch(e){}</script>
 <link rel="stylesheet" href="aura.css">
@@ -54,7 +54,7 @@
     <div id="messages" role="log" aria-live="polite" aria-label="Conversation"></div>
     <!-- Front page: shown by CSS only while #messages is empty -->
     <div id="welcome">
-      <p class="wl-wordmark" aria-label="Aura">AURA</p>
+      <p class="wl-wordmark" aria-label="Atlas">ATLAS</p>
       <h1 class="wl-title">What are we building today?</h1>
     </div>
     <button id="toBottom" type="button" title="Scroll to the newest message" aria-label="Scroll to the newest message"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M6 13l6 6 6-6"/></svg></button>
@@ -62,11 +62,11 @@
       <div id="thumbs" aria-label="Pictures to send"></div>
       <div id="composer">
         <label for="input" class="sr-only">Message</label>
-        <div id="inputWrap"><textarea id="input" rows="1" placeholder="Message Aura…"></textarea></div>
+        <div id="inputWrap"><textarea id="input" rows="1" placeholder="Message Atlas…"></textarea></div>
         <div class="cmp-tools">
           <button id="attachBtn" class="round ghost" type="button" title="Add picture (or paste / drop one)" aria-label="Add picture"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 11.5l-8.2 8.2a5 5 0 0 1-7.1-7.1l8.6-8.6a3.4 3.4 0 0 1 4.8 4.8l-8.5 8.5a1.7 1.7 0 0 1-2.4-2.4l7.8-7.8"/></svg></button><input type="file" id="fileIn" accept="image/*" multiple hidden>
           <div class="mode-pick">
-            <button id="modeBtn" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="modeMenu" title="Mode"><span id="modeLabel">Aura</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10l5 5 5-5"/></svg></button>
+            <button id="modeBtn" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="modeMenu" title="Mode"><span id="modeLabel">Atlas</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10l5 5 5-5"/></svg></button>
             <div id="modeMenu" role="menu" aria-label="Mode" hidden></div>
             <div id="pills" role="group" aria-label="Mode" aria-hidden="true"></div>
           </div>
@@ -106,8 +106,8 @@
       <div class="pv-progress" aria-hidden="true"></div>
       <iframe id="pvFrame" hidden title="Web page" sandbox="allow-scripts allow-forms allow-same-origin allow-popups allow-modals"></iframe>
       <div id="pvOverlayHost" hidden></div>
-      <div id="pvStart" class="pv-card"><span class="pv-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c3.2 3.4 3.2 13.6 0 17M12 3.5c-3.2 3.4-3.2 13.6 0 17"/></svg></span><span class="pv-kicker">Preview</span><p>Nothing to preview yet.<br>Websites Aura builds show up here live. You can also type an address above.</p><button id="pvNewest" type="button">Open my newest website</button></div>
-      <div id="pvBlocked" class="pv-card" hidden><span class="pv-kicker">Blocked by the site</span><strong>This site can't be shown inside Aura</strong><span id="pvBlockedUrl" class="pv-url2"></span><p>Some big sites refuse to load in a side pane. They work fine in their own window.</p><div class="pv-actions"><button id="pvBlockWin" type="button">Open in a browser window</button><button id="pvBlockExt" type="button">Open in my normal browser</button></div></div>
+      <div id="pvStart" class="pv-card"><span class="pv-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c3.2 3.4 3.2 13.6 0 17M12 3.5c-3.2 3.4-3.2 13.6 0 17"/></svg></span><span class="pv-kicker">Preview</span><p>Nothing to preview yet.<br>Websites Atlas builds show up here live. You can also type an address above.</p><button id="pvNewest" type="button">Open my newest website</button></div>
+      <div id="pvBlocked" class="pv-card" hidden><span class="pv-kicker">Blocked by the site</span><strong>This site can't be shown inside Atlas</strong><span id="pvBlockedUrl" class="pv-url2"></span><p>Some big sites refuse to load in a side pane. They work fine in their own window.</p><div class="pv-actions"><button id="pvBlockWin" type="button">Open in a browser window</button><button id="pvBlockExt" type="button">Open in my normal browser</button></div></div>
     </div>
   </aside>
   <button id="pvTab" type="button" title="Open the preview" aria-label="Open the preview" hidden>PREVIEW</button>

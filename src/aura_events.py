@@ -83,7 +83,7 @@ class Translator:
         if not has_tool:
             return []
         self._open = False
-        return [{"t": "tool", "text": "Aura is working on it..."}]
+        return [{"t": "tool", "text": "Atlas is working on it..."}]
 
     def _handle_result(self, obj):
         is_error = bool(obj.get("is_error", False))

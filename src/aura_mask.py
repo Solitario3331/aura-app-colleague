@@ -15,7 +15,7 @@ def _replace(match):
     token = match.group(0)
     if token.lower().endswith(_FILE_EXTS):
         return token
-    return "Aura"
+    return "Atlas"
 
 
 def mask_names(text: str) -> str:

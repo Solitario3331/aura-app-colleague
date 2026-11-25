@@ -1,6 +1,6 @@
 """Start helper programs without a console window popping up (Windows).
 
-Aura runs under pythonw.exe, which has no console. Any console program it starts (powershell, claude,
+Atlas runs under pythonw.exe, which has no console. Any console program it starts (powershell, claude,
 python, taskkill, pip...) would then get its OWN new console window that flashes open and shut.
 hidden() gives such a child a hidden console instead; its own children inherit that hidden console,
 so they stay invisible too. child_python() swaps pythonw.exe for python.exe: pythonw is a window-less
@@ -34,7 +34,7 @@ CREATE_BREAKAWAY_FROM_JOB = 0x01000000
 
 
 def start_detached(cmd, cwd):
-    """Start a window program that must outlive this one (Aura restarting itself): own process group,
+    """Start a window program that must outlive this one (Atlas restarting itself): own process group,
     no console, not tied to our job object. Unlike hidden(), its window is NOT forced hidden."""
     io = {"stdin": subprocess.DEVNULL, "stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL,
           "close_fds": True, "cwd": cwd}

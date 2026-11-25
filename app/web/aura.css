@@ -1,5 +1,5 @@
 /* =====================================================================
-   Aura - dark cyberpunk theme (polish 3: compact, calm, one rule per thing)
+   Atlas - dark cyberpunk theme (polish 3: compact, calm, one rule per thing)
    Near-black navy, one cold blue accent, hairlines, sharp corners,
    faint scanlines, glitch accents used sparingly.
    Sections: fonts, tokens, base, loading screen, top strip + window
@@ -85,7 +85,7 @@ body::after { background: radial-gradient(ellipse at 50% 45%, transparent 60%, r
   fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; }
 
 /* =====================================================================
-   Loading screen: glitching italic AURA + thin white bar
+   Loading screen: glitching italic ATLAS + thin white bar
    ===================================================================== */
 #splash { position: fixed; inset: 0; z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 26px;
   background: #000; transition: opacity .5s ease; }
@@ -232,10 +232,10 @@ body.sb-hidden #sidebar { display: none; }
 #messages { flex: 1; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: var(--s6);
   padding: var(--s8) max(var(--gutter), calc((100% - var(--content)) / 2)) var(--s6); }
 
-/* front page text: AURA word + typewriter "AWAITING INPUT_" (pseudo elements of an empty #messages) */
+/* front page text: ATLAS word + typewriter "AWAITING INPUT_" (pseudo elements of an empty #messages) */
 #messages:empty::before, #messages:empty::after { position: relative; left: calc(var(--sidebar) / -2); }
 body.sb-hidden #messages:empty::before, body.sb-hidden #messages:empty::after { left: 0; }
-#messages:empty::before { content: "AURA"; margin: auto auto 0; font-family: var(--mono); font-size: 26px; font-weight: 500; letter-spacing: .7em; padding-left: .7em; color: var(--hi); }
+#messages:empty::before { content: "ATLAS"; margin: auto auto 0; font-family: var(--mono); font-size: 26px; font-weight: 500; letter-spacing: .7em; padding-left: .7em; color: var(--hi); }
 #messages:empty::after { content: attr(data-typed); display: block; box-sizing: content-box; width: calc(15 * (1ch + .3em)); min-height: 1.4em;
   margin: 14px auto auto; text-align: left; white-space: pre; font-family: var(--mono); color: var(--dim); font-size: 11px; letter-spacing: .3em; }
 #messages.loading:empty::before, #messages.loading:empty::after { visibility: hidden; }
@@ -385,7 +385,7 @@ body.sb-hidden #messages:empty::before, body.sb-hidden #messages:empty::after { 
 /* =====================================================================
    Composer: the box, with one slim toolbar inside it
    [ text ......................................... ]
-   [ + ] [Aura|Quick|Local|Polish]        [|| Medium] [send]
+   [ + ] [Atlas|Quick|Local|Polish]        [|| Medium] [send]
    ===================================================================== */
 #composerWrap { padding: var(--s1) max(var(--gutter), calc((100% - var(--content)) / 2)) var(--s4); }
 #pillHint { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; } /* read aloud only; the pills have tooltips */
@@ -469,7 +469,7 @@ body.can-stop #sendBtn { display: none; }
 }
 
 /* =====================================================================
-   Start page (empty chat): AURA wordmark, "AWAITING INPUT_", the box in
+   Start page (empty chat): ATLAS wordmark, "AWAITING INPUT_", the box in
    the middle, idea buttons. The box glides to the bottom on first send.
    ===================================================================== */
 #main.is-empty { justify-content: center; }
@@ -819,7 +819,7 @@ body.calm #preview.loading .pv-progress::before { transform: none; width: 100%; 
 body.calm .upd-ring { border-color: var(--acc); opacity: .7; }
 body.calm .upd-bar i { width: 100%; opacity: .55; box-shadow: none; }
 
-/* answers carry no "AURA" label above them: they simply read as the answer */
+/* answers carry no "ATLAS" label above them: they simply read as the answer */
 .msg.assistant > .badge { display: none; }
 
 /* app menu (top-left) */

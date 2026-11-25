@@ -48,7 +48,7 @@ def build_context(messages, since_tag=None, max_messages=12, per_msg=500, max_ch
             continue
         if len(body) > per_msg:
             body = body[:per_msg] + "..."
-        label = "You" if role == "user" else "Aura"
+        label = "You" if role == "user" else "Atlas"
         lines.append(f"{label}: {body}")
 
     if not lines:

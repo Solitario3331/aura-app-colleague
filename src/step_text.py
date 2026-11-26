@@ -67,6 +67,22 @@ def _ps_target(cmd: str) -> str:
     return _name(m.group(1)) if m else ""
 
 
+def do_bat_text(cmd) -> str:
+    """The status line for a task Atlas hands to its helper: it should read as Atlas itself doing the work, never as a hand-over."""
+    low = str(cmd or "").lower()
+    if "generate an image" in low:
+        return "Creating your image"
+    if "watch this video" in low:
+        return "Watching the video"
+    if "ask about this video" in low:
+        return "Looking through the video"
+    if "read this page" in low:
+        return "Reading the page"
+    if "youtube" in low and ("play" in low or "open" in low):
+        return "Finding it on YouTube"
+    return "Working on it"
+
+
 def agent_step(name, args) -> dict:
     try:
         args = args if isinstance(args, dict) else {}
@@ -82,6 +98,17 @@ def agent_step(name, args) -> dict:
         if name == "open_website":
             n = _name(args.get("url"))
             return _done("web", "Opening " + n if n else "Opening a website")
+        if name == "generate_image":
+            return _done("work", "Creating your image")
+        if name == "watch_video":
+            return _done("web", "Watching the video")
+        if name == "ask_video":
+            return _done("web", "Looking through the video")
+        if name == "read_link":
+            n = _name(args.get("url"))
+            return _done("web", "Reading " + n if n else "Reading the page")
+        if name == "play_youtube":
+            return _done("web", "Finding it on YouTube")
         if name == "run_powershell":
             cmd = str(args.get("command") or "")
             low = cmd.lower()
@@ -128,7 +155,7 @@ def claude_step(line):
             if "runner.py" in cmd:
                 return _done("build", "Building and testing a piece")
             if "do.bat" in cmd:
-                return _done("work", "Handing a task to the helper")
+                return _done("work", do_bat_text(cmd))
             return _done("run", "Running a command")
         if tool == "Task":
             return _done("plan", "Planning the steps")

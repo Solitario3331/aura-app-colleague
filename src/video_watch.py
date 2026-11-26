@@ -3,6 +3,7 @@ Downloads a small copy, takes pictures at even spacing AND at every scene change
 vision model describe them in batches (what happens + the text on screen), turns the speech into timed text with
 faster-whisper (or uses subtitles), and lines the two up on one timeline. Honest about what it could not see or hear."""
 import base64
+import html
 import glob
 import json
 import re
@@ -41,10 +42,10 @@ def frame_budget(duration):
     if d <= 30:
         return 10
     if d <= 120:
-        return 16
+        return 14
     if d <= 480:
-        return 24
-    return 32
+        return 18
+    return 24
 
 
 def pick_times(duration, n=8):
@@ -115,7 +116,7 @@ def vtt_segments(raw):
             b = g[4] * 3600 + g[5] * 60 + g[6] + g[7] / 1000.0
             cur = (a, b)
             continue
-        line = re.sub(r"<[^>]+>", "", line).strip()
+        line = html.unescape(re.sub(r"<[^>]+>", "", line)).replace(" ", " ").strip()
         if not line or line.startswith(("WEBVTT", "Kind:", "Language:", "NOTE")) or line.isdigit() or cur is None:
             continue
         if line != last:
@@ -172,9 +173,22 @@ def _read_wav(path):
     return np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
 
 
+def _add_cuda_dlls():
+    """Make the pip-installed CUDA libraries (nvidia-cublas-cu12, nvidia-cudnn-cu12) loadable by faster-whisper."""
+    import os
+    try:
+        base = Path(sys.prefix) / "Lib" / "site-packages" / "nvidia"
+        for d in glob.glob(str(base / "*" / "bin")):
+            os.add_dll_directory(d)
+            os.environ["PATH"] = d + os.pathsep + os.environ.get("PATH", "")
+    except Exception:
+        pass
+
+
 def transcribe(wav, log=lambda m: None):
     """Speech in a 16 kHz wav -> [(start, end, text)] with faster-whisper (GPU first, CPU as a fallback).
     [] if nothing was said, None if the speech helper is not installed or failed."""
+    _add_cuda_dlls()
     try:
         from faster_whisper import WhisperModel
     except ImportError:
@@ -221,8 +235,17 @@ def _describe(batch, model, ollama_url, caption, speech_by_time):
     return str(r.get("message", {}).get("content", "")).strip()
 
 
-def watch(url, model, ollama_url, log=lambda m: None):
-    """Return a plain-text report about the video at url, or a plain error sentence."""
+def watch(url, model, ollama_url, log=lambda m: None, wait=480):
+    """Analyse a video of any length in a background job (see video_brain.py) and return its report, or a progress note."""
+    url = (url or "").strip()
+    if not url.lower().startswith(("http://", "https://")):
+        return "That does not look like a video link."
+    import video_brain
+    return video_brain.start_and_wait(url, model, ollama_url, log, max_wait=wait)
+
+
+def watch_quick(url, model, ollama_url, log=lambda m: None):
+    """The old one-shot version (first 15 minutes only, no memory). Kept for reference and tests."""
     url = (url or "").strip()
     if not url.lower().startswith(("http://", "https://")):
         return "That does not look like a video link."
@@ -248,15 +271,19 @@ def watch(url, model, ollama_url, log=lambda m: None):
         if not ff:
             lines.append("(I could not look at the pictures: ffmpeg is missing.)")
             return "\n".join(lines)
-        cmd = base + ["--no-playlist", "--no-warnings", "-f", "bv*[height<=480]+ba/b[height<=480]/b/bv*+ba",
-                      "--merge-output-format", "mp4", "--max-filesize", "%dM" % MAX_MB,
-                      "--download-sections", "*0-%d" % MAX_SECONDS, "--ffmpeg-location", str(Path(ff).parent),
+        cmd = base + ["--no-playlist", "--no-warnings", "-f", "bv*[height<=360]+ba/b[height<=360]/bv*[height<=480]+ba/b/worst",
+                      "--merge-output-format", "mp4", "--max-filesize", "%dM" % MAX_MB, "--ffmpeg-location", str(Path(ff).parent),
                       "--write-subs", "--write-auto-subs", "--sub-langs", "en,en-orig", "--ignore-errors", "--sub-format", "vtt",
                       "-o", str(work / "v.%(ext)s"), url]
-        run_capture(cmd, 300)
+        _o, derr, _c, why = run_capture(cmd, 480)
         files = [p for p in work.glob("v.*") if p.suffix.lower() in (".mp4", ".webm", ".mkv", ".mov")]
         if not files:
-            lines.append("(I could not download the video itself, so I only have its title and caption.)")
+            tail = (derr.strip().splitlines() or [""])[-1][:200]
+            log("watch download failed: %s | %s" % (why, tail))
+            reason = "it took too long" if why else (tail or "unknown reason")
+            if "larger than max-filesize" in derr or "File is larger" in derr:
+                reason = "the video file is too big"
+            lines.append("(I could not download the video itself (%s), so I only have its title and caption.)" % reason)
             return "\n".join(lines)
         vid = files[0]
 
@@ -268,7 +295,7 @@ def watch(url, model, ollama_url, log=lambda m: None):
             heard = segments
         else:
             wav = work / "a.wav"
-            run_capture([ff, "-y", "-i", str(vid), "-vn", "-ac", "1", "-ar", "16000", str(wav)], 120)
+            run_capture([ff, "-y", "-i", str(vid), "-t", str(MAX_SECONDS), "-vn", "-ac", "1", "-ar", "16000", str(wav)], 180)
             if wav.exists() and wav.stat().st_size > 1000:
                 heard = transcribe(wav, log)
                 segments = heard or []

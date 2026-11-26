@@ -126,7 +126,7 @@ def _tool(name, description, **params):
     return {"type": "function", "function": {
         "name": name, "description": description,
         "parameters": {"type": "object", "properties": {k: {"type": "string"} for k in params},
-                       "required": list(params)}}}
+                       "required": [k for k, v in params.items() if v]}}}
 
 
 TOOLS = [
@@ -199,10 +199,26 @@ if IN_AURA:
         url=1))
     TOOLS.append(_tool(
         "watch_video",
-        "Watch a video from a link (TikTok, Instagram, X, YouTube, Facebook ...) when the user sends a link and wants to know "
-        "what is in it, or says 'watch this'. It downloads a small copy, looks at pictures from it and reads the title, caption "
-        "and subtitles. It also listens to the speech and returns the spoken words; if the result says it could not hear, tell the user. Do NOT use it to play music (use play_youtube).",
+        "Watch a video from a link (TikTok, Instagram, X, YouTube, Facebook ... any length, even hours) when the user sends a link "
+        "and wants to know what is in it, or says 'watch this'. It listens to ALL the speech, looks at pictures spread through the "
+        "whole video and returns an overview, key moments and a timeline. Long videos keep working in the background: if the "
+        "result says it is still watching, tell the user plainly and call it again with the same link later. Do NOT use it to play "
+        "music (use play_youtube).",
         url=1))
+    TOOLS.append(_tool(
+        "generate_image",
+        "Make a picture from a description. Use it when the user asks you to draw, make, create or generate a picture, image, logo, "
+        "wallpaper, poster, avatar or illustration. Write 'prompt' as a rich, concrete description (subject, setting, style, lighting, "
+        "composition, mood) based on what the user asked, in English, and include any text the picture must show exactly. Draw exactly what was asked: fan art of existing fictional characters (anime, games, comics, movies) is allowed, so never refuse or swap in an original character and never mention copyright; real, well-known people (celebrities, athletes, public figures) are allowed too. Do not add your own filters or warnings: the picture service has its own safety filter, and if it declines, tell the user plainly and do not retry with disguised names. Do not make anything sexual involving children or childlike characters, sexual or nude pictures of real people, or pictures meant to deceive. 'size' is optional: "
+        "words like square, wide, tall, 4k or an exact size such as 1536x1024. 'quality' is optional: low, medium (default), high. Then "
+        "show the picture by putting the exact image line from the result into your answer, and add nothing else about it.",
+        prompt=1, size=0, quality=0))
+    TOOLS.append(_tool(
+        "ask_video",
+        "Answer a specific question about a video that was sent as a link (what happens at 20:00, what did he say about X, what "
+        "text was on screen, who appears...). It finds the exact speech and pictures in the saved analysis (it watches the video "
+        "first if that has not happened yet). Answer only from what it returns.",
+        url=1, question=1))
 
 
 def log(msg: str) -> None:
@@ -488,6 +504,14 @@ def _read_file(path: str, limit: int = 12000) -> str:
     return p.read_text(encoding="utf-8", errors="replace")[:limit]
 
 
+def _video_wait() -> int:
+    """Seconds a video tool may wait for the background analysis: up to 8 minutes, but inside this task's own time limit."""
+    if not DEADLINE:
+        return 480
+    left = DEADLINE - (time.time() - STARTED)
+    return int(max(30, min(480, left - 50)))
+
+
 def run_tool(name: str, args: dict) -> str:
     try:
         if name == "control_media":
@@ -496,13 +520,24 @@ def run_tool(name: str, args: dict) -> str:
             return play_youtube(str(args.get("what", "")))
         if name == "watch_video":
             import video_watch
-            return video_watch.watch(str(args.get("url", "")), MODEL, OLLAMA_URL, log)
+            return video_watch.watch(str(args.get("url", "")), MODEL, OLLAMA_URL, log, wait=_video_wait())
+        if name == "generate_image":
+            import comfy_cloud
+            path, msg = comfy_cloud.generate(str(args.get("prompt", "")), str(args.get("size", "")), str(args.get("quality", "")), log=log)
+            if not path:
+                return "No picture was made: " + msg
+            posix = str(path).replace("\\", "/")
+            return ("Picture saved: %s\nShow it to the user by putting this exact line in your answer and add nothing else about it "
+                    "(no cost, no model name): ![picture](%s)" % (path, posix))
+        if name == "ask_video":
+            import video_ask
+            return video_ask.ask(str(args.get("url", "")), str(args.get("question", "")), MODEL, OLLAMA_URL, log, wait=_video_wait())
         if name == "read_link":
             import link_read
             u = str(args.get("url", ""))
             if link_read.is_video_link(u):   # a video on a social/video site: watch it, do not scrape the page
                 import video_watch
-                return video_watch.watch(u, MODEL, OLLAMA_URL, log)
+                return video_watch.watch(u, MODEL, OLLAMA_URL, log, wait=_video_wait())
             return link_read.read(u)
         if name == "open_website":
             u = str(args.get("url", ""))

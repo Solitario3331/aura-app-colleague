@@ -118,8 +118,21 @@ AURA_PERSONA = " ".join((
     "Never tell the user you paused or played something unless that result says so.",
     "When the user sends a link to a VIDEO (TikTok, Instagram, YouTube, X, Facebook...) and wants to know what is in it, or says watch/analyze/summarize it, "
     "run do.bat \"watch this video and tell me what happens: <the link>\" (it downloads the video, looks at pictures from it and listens to the speech). "
+    "Videos of ANY length work (even hours): it keeps analysing in the background, so if the answer says it is still watching, tell the user and run the same command again a few minutes later. "
+    "For a specific question about a video you already watched (what happens at 20:00, what did he say about X), run do.bat \"ask about this video <the link>: <the question>\" instead of watching again. "
     "Never try to read such a link with a web fetch. Then answer only from what it reports; if it says it could not open the link, say so plainly. "
     "For any other link, run do.bat \"read this page and summarize it: <the link>\".",
+    "When the user asks you to draw, make, create or generate a picture, image, logo, wallpaper, poster, avatar or illustration, run do.bat "
+    "\"generate an image: <a rich description of the picture, with size words if they asked for one>\". Put the image line it returns into your "
+    "answer so the picture shows in the chat and add nothing else about it (no costs, no tool or model names). Never say you cannot make pictures. "
+    "Draw exactly what the user asked for. Fan art of existing fictional characters (anime, manga, games, comics, movies, cartoons) is allowed: "
+    "never refuse, never offer an 'original character' instead and never mention copyright or trademark. Pictures that show real, well-known people "
+    "(celebrities, athletes, politicians, public figures) are allowed too: do not refuse just because a name is mentioned. Do not add your own "
+    "filters, warnings, lectures or questions and do not stop to ask permission: pass the request on as the user wrote it. The picture service has "
+    "its own safety filter and it decides: if it declines, say plainly that this request was declined and stop (do not retry with disguised or "
+    "reworded names to get around it). You decline only these yourself: anything sexual involving children or childlike characters, sexual or nude "
+    "pictures of real people, pictures meant to deceive (fake news, fake evidence, impersonation, scams), and anything that harms or degrades a "
+    "real person. If it reports a problem (credits, key), tell the user plainly. ",
     "To PLAY something on YouTube run do.bat \"play <what> on YouTube\": it picks a video that really plays, opens it in Atlas and checks the screen itself, "
     "and tries another result if one shows an error. Never open a YouTube link yourself without that. If you open anything else and it matters that it worked, check with --see-aura.",
     "To open a website, use do.bat (it opens the site inside Atlas); never start a browser yourself. A website you built is ALREADY shown in the Atlas preview pane: never open it in the normal browser, never run start/Start-Process/explorer on it, and do not say it was opened in the browser unless the user asked.",
@@ -1081,6 +1094,15 @@ class Api:
             dwm.DwmSetWindowAttribute(hwnd, 34, ctypes.byref(ctypes.c_uint(0xFFFFFFFE)), 4)   # border: none
         except Exception as exc:
             _log("win_theme failed: " + repr(exc))
+
+    def image_progress(self) -> dict:
+        """What the picture maker is doing right now (stage, estimated percent, size, prompt) for the preview card in the chat."""
+        try:
+            import comfy_cloud
+            return comfy_cloud.read_progress(ROOT)
+        except Exception as exc:
+            _log("image_progress failed: " + repr(exc))
+            return {}
 
     def win_ready(self) -> None:
         """The page has loaded and painted its first (dark) screen: the window may appear now."""
@@ -3247,32 +3269,49 @@ def _keep_links_inside(api_obj) -> None:
 
 
 EXTRA_PACKAGES = (("yt_dlp", "yt-dlp"), ("faster_whisper", "faster-whisper"))   # video watching; an Update brings the code, this brings these
+GPU_PACKAGES = (("nvidia.cublas", "nvidia-cublas-cu12"), ("nvidia.cudnn", "nvidia-cudnn-cu12"))   # speech on the graphics card (NVIDIA PCs only)
 EXTRAS_STAMP = ROOT / "logs" / "extras_try.txt"
+YTDLP_STAMP = ROOT / "logs" / "ytdlp_update.txt"
+
+
+def _stamp_older_than(path, seconds) -> bool:
+    try:
+        return time.time() - float(path.read_text().strip()) >= seconds
+    except (OSError, ValueError):
+        return True
+
+
+def _stamp_now(path) -> None:
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(str(time.time()))
+    except OSError:
+        pass
 
 
 def _install_extras() -> None:
-    """Quietly install the packages newer features need, once a day at most, only into this app's own .venv."""
+    """Quietly install the packages newer features need (once a day at most, only into this app's own .venv): the video
+    packages, the graphics-card speech libraries on PCs with an NVIDIA card, and a weekly yt-dlp refresh (sites change)."""
     try:
         if Path(CHILD_PY).parent.parent.name != ".venv":
             return
+        wanted = list(EXTRA_PACKAGES) + (list(GPU_PACKAGES) if shutil.which("nvidia-smi") else [])
         missing = []
-        for mod, pkg in EXTRA_PACKAGES:
+        for mod, pkg in wanted:
             _o, _e, code, _r = no_window.run_capture([CHILD_PY, "-c", "import " + mod], 60)
             if code != 0:
                 missing.append(pkg)
-        if not missing:
-            return
-        try:
-            if time.time() - float(EXTRAS_STAMP.read_text().strip()) < 24 * 3600:
-                return
-        except (OSError, ValueError):
-            pass
-        EXTRAS_STAMP.parent.mkdir(parents=True, exist_ok=True)
-        EXTRAS_STAMP.write_text(str(time.time()))
-        _log("installing extra packages: " + ", ".join(missing))
-        _o, err, code, _r = no_window.run_capture(
-            [CHILD_PY, "-m", "pip", "install", "--disable-pip-version-check", "-q"] + missing, 900)
-        _log("extra packages " + ("installed" if code == 0 else "failed: " + (err.strip().splitlines() or ["?"])[-1][:200]))
+        if missing and _stamp_older_than(EXTRAS_STAMP, 24 * 3600):
+            _stamp_now(EXTRAS_STAMP)
+            _log("installing extra packages: " + ", ".join(missing))
+            _o, err, code, _r = no_window.run_capture(
+                [CHILD_PY, "-m", "pip", "install", "--disable-pip-version-check", "-q"] + missing, 1800)
+            _log("extra packages " + ("installed" if code == 0 else "failed: " + (err.strip().splitlines() or ["?"])[-1][:200]))
+        elif not missing and _stamp_older_than(YTDLP_STAMP, 7 * 24 * 3600):
+            _stamp_now(YTDLP_STAMP)
+            _o, err, code, _r = no_window.run_capture(
+                [CHILD_PY, "-m", "pip", "install", "--disable-pip-version-check", "-q", "-U", "yt-dlp"], 600)
+            _log("yt-dlp refresh " + ("ok" if code == 0 else "failed: " + (err.strip().splitlines() or ["?"])[-1][:200]))
     except Exception as exc:
         _log("extras failed: " + repr(exc))
 

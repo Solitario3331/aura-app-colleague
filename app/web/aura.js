@@ -17,8 +17,8 @@
   var calmMotion = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
 
   var MODES = [
-    { id: "claude", label: "Atlas", tip: "Smart and thorough: Atlas plans and hands the work to the helper" },
-    { id: "auto", label: "Quick", tip: "Fast, no thinking: Atlas hands the work to the helper" },
+    { id: "claude", label: "Atlas", tip: "Smart and thorough: Atlas plans carefully and does the work" },
+    { id: "auto", label: "Quick", tip: "Fast and light: Atlas answers quickly, without long thinking" },
     { id: "qwen", label: "Local", tip: "Runs only on this PC, free" },
     { id: "polish", label: "Polish", tip: "Atlas makes the website of this chat look great" }
   ];
@@ -198,9 +198,16 @@
   }
   var MEDIA_ICO_EXPAND = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6"/><path d="M10 20H4v-6"/><path d="M20 4l-7 7"/><path d="M4 20l7-7"/></svg>';
   var MEDIA_ICO_PLAY = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5l11 7-11 7z"/></svg>';
+  var IG_MAXW = 380, IG_MAXH = 300, igLast = null, igAdopt = null;
+  /* the one box size shared by the "creating" card and the finished picture (so the picture appears exactly where the card was) */
+  function igBox(w, h) { w = w > 0 ? w : 1; h = h > 0 ? h : 1; var a = w / h, hh = Math.min(IG_MAXH, IG_MAXW / a); return { w: Math.round(hh * a), h: Math.round(hh) }; }
   function imageBlock(path) {
     var name = String(path).split(/[\\\/]/).pop();
     var card = document.createElement("div"); card.className = "media-card is-loading";
+    var adopted = null;
+    var picIsVid = /\.(mp4|webm|mov|m4v|mkv)$/i.test(name), isGen = /[\\\/]Atlas[\\\/]images[\\\/]/i.test(String(path));
+    if (!picIsVid) card.classList.add("is-pic");
+    if (isGen && !picIsVid) card.classList.add("is-gen");
     var frame = document.createElement("div"); frame.className = "media-frame";
     var bar = document.createElement("div"); bar.className = "media-bar";
     var meta = document.createElement("span"); meta.className = "media-meta"; meta.textContent = name; meta.title = path;
@@ -254,13 +261,22 @@
     }
     function show(r) {
       cur = r; isVid = r.kind === "video";
-      card.classList.remove("is-loading", "is-failed"); frame.textContent = "";
+      card.classList.remove("is-loading", "is-failed"); if (!adopted) frame.textContent = "";
       var el = document.createElement(isVid ? "video" : "img"); el.className = "media-el";
+      if (adopted) { frame.style.position = "relative"; el.style.cssText = "position:absolute;left:0;top:0;opacity:0"; }
       if (isVid) { el.controls = true; el.preload = "metadata"; el.setAttribute("playsinline", ""); }
       else { el.alt = name; el.title = "Click to open and zoom"; el.addEventListener("click", function () { openLightbox(r.url); }); }
       el.addEventListener("error", function () { fail(isVid ? "This video can't be played here." : "This picture can't be shown."); });
       el.addEventListener(isVid ? "loadedmetadata" : "load", function () {
         var w = isVid ? el.videoWidth : el.naturalWidth, h = isVid ? el.videoHeight : el.naturalHeight;
+        if (isGen && !isVid && w && h) { var sb = igBox(w, h); el.style.width = sb.w + "px"; el.style.height = sb.h + "px"; if (!adopted) { frame.style.width = ""; frame.style.height = ""; } }
+        if (adopted) {
+          var ad = adopted; adopted = null;
+          // a Web Animation keeps running when the chat re-renders and moves this element (a CSS transition would be cancelled)
+          var fa = el.animate ? el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 700, easing: "ease", fill: "forwards" }) : null;
+          if (!fa) el.style.opacity = "1";
+          setTimeout(function () { if (fa) fa.cancel(); if (ad.parentNode) ad.parentNode.removeChild(ad); el.style.cssText = el.style.width ? "width:" + el.style.width + ";height:" + el.style.height : ""; frame.style.width = ""; frame.style.height = ""; frame.style.position = ""; }, 800);
+        }
         meta.textContent = name + " · " + (w && h ? w + "×" + h + " · " : "") + fmtBytes(r.size);
       });
       el.src = r.url; frame.appendChild(el);
@@ -268,6 +284,22 @@
     }
     function load(force) {
       card.classList.add("is-loading"); card.classList.remove("is-failed"); frame.textContent = "";
+      if (isGen && igLast) { var gb = igBox(igLast.w, igLast.h); frame.style.width = gb.w + "px"; frame.style.height = gb.h + "px"; }
+      adopted = null;
+      if (isGen && igAdopt) {
+        var ab = igAdopt();
+        if (ab) {
+          adopted = ab.box; card.classList.add("is-adopt"); card.style.visibility = "hidden"; frame.appendChild(ab.box); frame.style.width = ab.box.style.width; frame.style.height = ab.box.style.height;
+          // glide from where the animation was to where the picture lives (a few pixels at most in a real chat): never a jump
+          setTimeout(function () { card.style.visibility = ""; }, 150);   // safety: never leave it hidden
+          requestAnimationFrame(function () {
+            var r1 = ab.box.getBoundingClientRect(), dx = ab.rect.left - r1.left, dy = ab.rect.top - r1.top;
+            if (ab.rect.width < 1 || Math.abs(dx) + Math.abs(dy) < 0.5) { card.style.visibility = ""; return; }   // no glide when the old spot could not be measured
+            if (card.animate) card.animate([{ transform: "translate(" + dx + "px," + dy + "px)" }, { transform: "none" }], { duration: 450, easing: "cubic-bezier(.2,.8,.2,1)", fill: "backwards" });
+            card.style.visibility = "";
+          });
+        }
+      }
       acts.textContent = "";
       getMedia(path, force, function (r) { if (r) show(r); else fail("Could not find this " + (isVid ? "video" : "picture") + "."); });
     }
@@ -287,8 +319,8 @@
     var out = document.createDocumentFragment();
     var lines = String(text || "").replace(/\r\n?/g, "\n").split("\n");
     var i = 0, para = [], list = null, listType = null, m;
-    var pendingImgs = [];
-    function flushImgs() { pendingImgs.forEach(function (pth) { out.appendChild(imageBlock(pth)); }); pendingImgs = []; }
+    var pendingImgs = [], prevImgs = el._imgNodes || {}, nextImgs = {};
+    function flushImgs() { pendingImgs.forEach(function (pth) { var nd = prevImgs[pth] || imageBlock(pth); nextImgs[pth] = nd; out.appendChild(nd); }); pendingImgs = []; }
     function flushPara() {
       if (!para.length) { flushImgs(); return; }
       var p = document.createElement("p");
@@ -314,7 +346,7 @@
       var imgs = imagePathsIn(line);
       if (imgs.length) {
         var rest = line.replace(IMG_PATH_RE, "").replace(/[`*_:()\[\]<>-]/g, "").replace(/\b(saved|screenshot|picture|image|here|to|at|is|as|the|in|file|path)\b/gi, "").trim();
-        if (!rest) { flushAll(); imgs.forEach(function (pth) { out.appendChild(imageBlock(pth)); }); i++; continue; }
+        if (!rest) { flushAll(); imgs.forEach(function (pth) { var nd = prevImgs[pth] || imageBlock(pth); nextImgs[pth] = nd; out.appendChild(nd); }); i++; continue; }
         imgs.forEach(function (pth) { pendingImgs.push(pth); });
       }
       if ((m = /^(#{1,4})\s+(.*)$/.exec(line))) {
@@ -342,6 +374,7 @@
       para.push(line); i++;
     }
     flushPara();
+    el._imgNodes = nextImgs;
     el.textContent = "";
     el.appendChild(out); // one DOM update per render (cheap while streaming)
   }
@@ -1055,6 +1088,7 @@
   function slashRun(text) {
     var m = /^\/([A-Za-z]+)(?:\s+([\s\S]*))?$/.exec(text);
     if (!m) return false; // "/usr/bin ..." and normal text go through as messages
+    if (m[1].toLowerCase() === "updatedemo") { input.value = ""; autoGrow(); slashHide(); updDemoRun(); return true; }
     var c = slashFind(m[1]), arg = (m[2] || "").trim();
     if (!c) {
       var g = slashGuess(m[1]);
@@ -2029,6 +2063,163 @@
     window.addEventListener("blur", close);
     document.addEventListener("keydown", function (e) { if (e.key === "Escape") close(); });
   })();
+
+  // draggable sidebars: left = chat list, right = preview pane. Drag the thin edge; double-click resets; sizes are remembered.
+  (function () {
+    var root = document.documentElement, side = document.getElementById("sidebar"), pv = document.getElementById("preview");
+    if (!side || !pv) return;
+    var LIM = { side: [190, 480], pv: [300, 1200] }, KEY = { side: "atlasSideW", pv: "atlasPvW" };
+    function get(k) { try { var v = parseInt(localStorage.getItem(KEY[k]), 10); return v > 0 ? v : 0; } catch (e) { return 0; } }
+    function put(k, v) { try { if (v) localStorage.setItem(KEY[k], String(v)); else localStorage.removeItem(KEY[k]); } catch (e) { /* ignore */ } }
+    function clamp(k, v) {
+      var hi = LIM[k][1];
+      if (k === "side") hi = Math.min(hi, Math.round(innerWidth * 0.45));
+      else hi = Math.min(hi, Math.round(innerWidth - (side.offsetWidth || 0) - 44 - 380));   // the chat keeps at least 380 px
+      return Math.max(LIM[k][0], Math.min(hi, Math.round(v)));
+    }
+    function apply(k, v) {
+      if (k === "side") { if (v) root.style.setProperty("--sidebar", clamp("side", v) + "px"); else root.style.removeProperty("--sidebar"); }
+      else { if (v) pv.style.setProperty("--pv-w", clamp("pv", v) + "px"); else pv.style.removeProperty("--pv-w"); }
+    }
+    apply("side", get("side")); apply("pv", get("pv"));
+    window.addEventListener("resize", function () { apply("side", get("side")); apply("pv", get("pv")); });
+    function handle(k, host) {
+      var h = document.createElement("div");
+      h.className = "rsz rsz-" + k; h.setAttribute("role", "separator"); h.setAttribute("aria-orientation", "vertical");
+      h.setAttribute("aria-label", k === "side" ? "Resize chat list" : "Resize preview"); h.tabIndex = 0;
+      host.appendChild(h);
+      h.addEventListener("pointerdown", function (e) {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        var x0 = e.clientX, w0 = host.getBoundingClientRect().width, cur = w0;
+        try { h.setPointerCapture(e.pointerId); } catch (x) { /* ignore */ }
+        document.body.classList.add("resizing"); h.classList.add("on");
+        try { ovSuspend(); } catch (x) { /* ignore */ }   // the real browser view must not swallow the mouse while dragging
+        function move(ev) {
+          cur = clamp(k, k === "side" ? w0 + (ev.clientX - x0) : w0 - (ev.clientX - x0));
+          apply(k, cur);
+        }
+        function up() {
+          h.removeEventListener("pointermove", move); h.removeEventListener("pointerup", up); h.removeEventListener("pointercancel", up);
+          document.body.classList.remove("resizing"); h.classList.remove("on");
+          put(k, cur);
+          try { ovResume(); } catch (x) { /* ignore */ }
+          window.dispatchEvent(new Event("resize"));
+        }
+        h.addEventListener("pointermove", move); h.addEventListener("pointerup", up); h.addEventListener("pointercancel", up);
+      });
+      h.addEventListener("dblclick", function () { put(k, 0); apply(k, 0); window.dispatchEvent(new Event("resize")); });
+      h.addEventListener("keydown", function (e) {
+        var d = e.key === "ArrowLeft" ? -16 : e.key === "ArrowRight" ? 16 : 0;
+        if (!d) { if (e.key === "Home") { put(k, 0); apply(k, 0); e.preventDefault(); } return; }
+        e.preventDefault();
+        var w = host.getBoundingClientRect().width, nw = clamp(k, k === "side" ? w + d : w - d);
+        apply(k, nw); put(k, nw); window.dispatchEvent(new Event("resize"));
+      });
+    }
+    handle("side", side); handle("pv", pv);
+  })();
+
+  // image preview card: while Atlas makes a picture, a card (the exact size of the finished picture) shows a soft dot field that
+  // lights up as a percentage climbs. Everything moves on one time-based loop, so it stays smooth whatever the progress updates do.
+  // When the picture is ready the dot box is HANDED OVER to the picture card (igAdopt) and the picture fades in on top of it.
+  (function () {
+    var card = null, boxEl = null, pctEl = null, missed = 0, shown = 0, target = 0, stage = "", doneAt = 0, mediaBefore = 0, lastSeen = 0, raf = 0, prevTs = 0;
+    function near() { return messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 140; }
+    function css(name, fb) { var v = getComputedStyle(document.documentElement).getPropertyValue(name).trim(); return v || fb; }
+    function hash(x, y) { var h = Math.sin(x * 127.1 + y * 311.7) * 43758.5453; return h - Math.floor(h); }
+    function clamp01(v) { return v < 0 ? 0 : v > 1 ? 1 : v; }
+    function build(d) {
+      var wh = String(d.size || "1024x1024").split("x"), w = parseInt(wh[0], 10) || 1024, h = parseInt(wh[1], 10) || 1024;
+      var b = igBox(w, h), was = near();
+      igLast = { w: w, h: h };
+      card = document.createElement("div"); card.className = "imggen"; card.setAttribute("role", "status");
+      card.innerHTML = '<div class="ig-box" style="width:' + b.w + 'px;height:' + b.h + 'px"><canvas class="ig-cv"></canvas>' +
+        '<div class="ig-pct"><b>0</b><span>%</span></div></div>';
+      boxEl = card.querySelector(".ig-box"); pctEl = card.querySelector(".ig-pct b");
+      messagesEl.appendChild(card);
+      shown = 0; target = 0; stage = ""; doneAt = 0; prevTs = 0; mediaBefore = document.querySelectorAll(".media-card").length;
+      if (was) messagesEl.scrollTop = messagesEl.scrollHeight;
+      if (!raf) raf = requestAnimationFrame(frame);
+    }
+    function drop() {
+      if (!card) return;
+      var c = card; card = null;
+      c.classList.add("out");
+      setTimeout(function () { if (c.parentNode) c.parentNode.removeChild(c); boxEl = null; pctEl = null; }, 500);
+    }
+    // the finished picture card takes the box over: it keeps drawing (and ticks to 100) inside the picture card until the picture has faded in
+    igAdopt = function () {
+      if (!card || !boxEl) return null;
+      var b = boxEl, c = card, rect = b.getBoundingClientRect();
+      card = null;
+      if (b.parentNode) b.parentNode.removeChild(b);
+      if (c.parentNode) c.parentNode.removeChild(c);
+      stage = "done"; target = 100; doneAt = Date.now();
+      return { box: b, rect: rect };
+    };
+    function frame(ts) {
+      raf = 0;
+      if (!boxEl) return;
+      if (!boxEl.isConnected) { if (++missed > 40) { boxEl = null; return; } } else { missed = 0; }   // tolerate the instant a box is being moved
+      var dt = prevTs ? Math.min(0.1, (ts - prevTs) / 1000) : 0.016; prevTs = ts;
+      // the number eases toward the latest estimate and creeps on gently between updates; it never passes 94 before "done"
+      var k = 1 - Math.exp(-dt * (stage === "done" ? 7 : 1.5));
+      shown += (target - shown) * k;
+      if (stage !== "done" && shown >= target - 0.3 && shown < Math.min(94, target + 3)) shown += 0.5 * dt;
+      if (stage === "done" && target - shown < 0.02) shown = 100;
+      if (pctEl) pctEl.textContent = String(Math.min(100, Math.floor(shown + 0.0001)));
+      var cv = boxEl.querySelector(".ig-cv");
+      if (cv) {
+        var W = boxEl.clientWidth, H = boxEl.clientHeight, dpr = Math.min(2, window.devicePixelRatio || 1);
+        if (W > 10 && H > 10) {
+          if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
+          var ctx = cv.getContext("2d");
+          ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
+          var step = Math.max(9, Math.round(W / 40)), cols = Math.max(2, Math.floor(W / step)), rows = Math.max(2, Math.floor(H / step));
+          var ox = (W - (cols - 1) * step) / 2, oy = (H - (rows - 1) * step) / 2;
+          var p = clamp01(shown / 100), time = ts / 1000, calm = document.body.classList.contains("calm");
+          var hi = css("--hi", "#ffffff"), acc = css("--acc", "#7b8cff");
+          for (var r = 0; r < rows; r++) {
+            for (var c = 0; c < cols; c++) {
+              var nx = c / (cols - 1), ny = r / (rows - 1), j = hash(c, r);
+              var t = nx * 0.8 + ny * 0.2 + (j - 0.5) * 0.05;                       // where the sweep reaches this dot
+              var lit = clamp01((p * 1.3 - 0.06 - t) / 0.2); lit = lit * lit * (3 - 2 * lit);
+              var band = Math.exp(-Math.pow((t - (p * 1.3 - 0.16)) / 0.10, 2));      // the soft glowing front
+              var wave = calm ? 0.5 : 0.5 + 0.5 * Math.sin(time * 1.3 - (nx * 7 + ny * 4));
+              var a = (0.07 + 0.07 * wave) * (1 - lit) + (0.30 + 0.20 * wave) * lit;
+              var rad = 0.8 + 1.0 * lit + 0.7 * band;
+              ctx.globalAlpha = a; ctx.fillStyle = hi;
+              ctx.beginPath(); ctx.arc(ox + c * step, oy + r * step, rad, 0, 6.2832); ctx.fill();
+              if (band > 0.04) { ctx.globalAlpha = Math.min(0.9, band * 0.85); ctx.fillStyle = acc; ctx.beginPath(); ctx.arc(ox + c * step, oy + r * step, rad + 0.2, 0, 6.2832); ctx.fill(); }
+            }
+          }
+          ctx.globalAlpha = 1;
+        }
+      }
+      raf = requestAnimationFrame(frame);
+    }
+    function poll() {
+      if (!api || !api.image_progress) return;
+      if (!card && !document.body.classList.contains("busy")) return;
+      api.image_progress().then(function (d) {
+        var st = d && d.stage;
+        if (st === "queued" || st === "creating" || st === "downloading") {
+          lastSeen = Date.now();
+          if (!card) build(d);
+          stage = st; target = Math.max(target, Number(d.pct) || 0);
+        } else if (st === "done" && card) {
+          lastSeen = Date.now(); stage = "done"; target = 100;
+          if (!doneAt) doneAt = Date.now();
+        } else if (card && Date.now() - lastSeen > 4000) { drop(); }
+        if (card && doneAt) {
+          var gotCard = document.querySelectorAll(".media-card").length > mediaBefore;
+          if (gotCard || !document.body.classList.contains("busy") || Date.now() - doneAt > 9000) drop();
+        }
+      }).catch(noop);
+    }
+    setInterval(poll, 500);
+  })();
   function toggleMax() { if (api) api.win_max().then(showMax).catch(noop); }
   var maxTimer = 0;
   window.addEventListener("resize", function () { clearTimeout(maxTimer); maxTimer = setTimeout(syncMax, 250); });
@@ -2318,8 +2509,8 @@
     updOv = document.createElement("div"); updOv.id = "updOv";
     updOv.setAttribute("role", "alertdialog"); updOv.setAttribute("aria-modal", "true");
     updOv.setAttribute("aria-labelledby", "updTitle"); updOv.setAttribute("aria-describedby", "updStep");
-    updOv.innerHTML = '<div class="upd-card" tabindex="-1"><div class="upd-ring" aria-hidden="true"></div>' +
-      '<h3 id="updTitle">Updating Atlas</h3><p id="updStep" aria-live="polite"></p>' +
+    updOv.innerHTML = '<div class="upd-card" tabindex="-1"><div class="upd-badge" aria-hidden="true"><svg class="ub-arrow" viewBox="0 0 24 24"><path d="M12 4v11M7 11l5 5 5-5M5 20h14"/></svg><svg class="ub-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></div>' +
+      '<h3 id="updTitle">Updating Atlas</h3><div class="upd-ver">' + (updAvail ? 'Version ' + updAvail : '') + '</div><ol class="upd-steps" aria-hidden="true"><li data-s="1">Download</li><li data-s="2">Install</li><li data-s="3">Restart</li></ol><p id="updStep" aria-live="polite"></p>' +
       '<div class="upd-bar" aria-hidden="true"><i></i></div>' +
       '<div class="upd-actions" hidden><button type="button" class="set-btn" id="updClose">Close</button>' +
       '<button type="button" class="set-btn primary" id="updRetry">Retry</button></div></div>';
@@ -2327,14 +2518,30 @@
       if (!el.inert) { el.inert = true; el.setAttribute("data-upd-inert", ""); } /* no clicks or focus behind */
     });
     document.body.appendChild(updOv);
-    updOv.querySelector("#updRetry").addEventListener("click", function () { if (updPending) restartNow(); else runUpdate(); });
+    updOv.querySelector("#updRetry").addEventListener("click", function () { if (updDemo) updDemoRestart(); else if (updPending) restartNow(); else runUpdate(); });
     updOv.querySelector("#updClose").addEventListener("click", updHide);
     document.addEventListener("keydown", updKey, true);
     requestAnimationFrame(function () { if (updOv) { updOv.classList.add("show"); updOv.querySelector(".upd-card").focus(); } });
     return updOv;
   }
+  /* /updatedemo: plays the update screen with fake timing so it can be looked at. Nothing is downloaded or installed. */
+  var updDemo = false;
+  function updDemoRun() {
+    if (updOv || updBusy) return;
+    updDemo = true; updBusy = true; ovSuspend();
+    updAvail = "0.0.0 (demo)";
+    updStep("Downloading the update...");
+    setTimeout(function () { if (updOv && updDemo) updStep("Installing..."); }, 3200);
+    setTimeout(function () { if (updOv && updDemo) { updBusy = false; askRestart(); } }, 6200);
+  }
+  function updDemoRestart() {
+    updBusy = true; if (updOv) updOv.classList.remove("ask");
+    updStep("Restarting Atlas...");
+    setTimeout(function () { updBusy = false; updHide(); toast("That was a demo: nothing was installed."); }, 3200);
+  }
   function updHide() {
     if (!updOv || updBusy) return;
+    updDemo = false;
     document.removeEventListener("keydown", updKey, true);
     Array.prototype.forEach.call(document.querySelectorAll("[data-upd-inert]"), function (el) { el.inert = false; el.removeAttribute("data-upd-inert"); });
     updOv.remove(); updOv = null;
@@ -2347,7 +2554,9 @@
     var o = updShow();
     o.classList.toggle("err", !!failed);
     o.querySelector("#updTitle").textContent = failed ? "Update did not finish" : "Updating Atlas";
-    o.querySelector("#updStep").textContent = text;
+    var stEl = o.querySelector("#updStep");
+    if (stEl.textContent !== text) { stEl.textContent = text; stEl.classList.remove("swap"); void stEl.offsetWidth; stEl.classList.add("swap"); }
+    o.dataset.phase = failed ? "0" : /^Install/.test(text) ? "2" : /^Restart/.test(text) ? "3" : "1";
     o.querySelector(".upd-actions").hidden = !failed;
     if (failed) o.querySelector("#updRetry").focus();
   }
@@ -2373,8 +2582,8 @@
   function askRestart() {
     var o = updShow();
     o.classList.remove("err"); o.classList.add("ask");
-    o.querySelector("#updTitle").textContent = "Update installed";
-    o.querySelector("#updStep").textContent = "Restart Atlas to start using the new version, or do it later.";
+    o.querySelector("#updTitle").textContent = "Update installed"; o.dataset.phase = "4";
+    o.querySelector("#updStep").textContent = "Restart to start using the new version.";
     o.querySelector(".upd-actions").hidden = false;
     o.querySelector("#updClose").textContent = "Later";
     o.querySelector("#updRetry").textContent = "Restart now";

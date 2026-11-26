@@ -125,6 +125,8 @@ def list_sessions(d, include_empty=True, with_time=False) -> list:
                 data = json.load(fh)
         except Exception:
             continue
+        if not isinstance(data, dict):  # valid JSON but not a chat (a stray list/text): skip it, never fail the whole list
+            continue
         if not include_empty and not data.get("messages"):
             continue
         updated = data.get("updated")

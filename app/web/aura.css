@@ -1099,3 +1099,41 @@ body.pv-full #preview.open { position: fixed !important; top: var(--strip, 44px)
   width: auto !important; min-width: 0 !important; max-width: none !important; z-index: 70; border: 0 !important; box-shadow: none !important; animation: none !important; }
 body.pv-full #main > :not(#topstrip) { visibility: hidden; }
 body.pv-full #topstrip #sbToggle, body.pv-full #topstrip #newChat { visibility: hidden; }
+
+/* =====================================================================
+   Fable pass (2026-11-26): measured glitches and contrast only, nothing restyled.
+   Undo: copy app/backup/before_fable/web/aura.css back.
+   ===================================================================== */
+
+/* 1. paragraphs of an answer had NO space between them (".bubble p { margin: 0 }" beat ".bubble > * + *"):
+      a normal gap between blocks, a smaller one right under a heading */
+.bubble > * + p { margin-top: .75em; }
+.bubble > :is(h3, h4, h5, h6) + p { margin-top: .4em; }
+
+/* 2. the chat column no longer gets narrower the moment a chat is long enough to scroll, and its right edge
+      lines up with the message box: the scrollbar's 10px are always kept free and taken off the right padding */
+#messages { scrollbar-gutter: stable; padding-right: calc(max(var(--gutter), (100% - var(--content)) / 2) - 10px); }
+
+/* 3. the copy / reply / edit buttons beside one of YOUR messages were cut off when the message was wide
+      (small window, or the preview open): a message now always leaves room for them */
+.msg.user { max-width: min(78%, calc(100% - 92px)); }
+@media (max-width: 800px) { .msg.user { max-width: min(92%, calc(100% - 92px)); } }
+
+/* 4. contrast: each of these measured under 4.5:1 */
+.side-label { opacity: 1; }
+#version, .hv-count { color: var(--dim); }
+
+/* 5. small windows with the preview open:
+      - under 861px the pane floats over the chat again (the draggable-sidebars block made it "position: relative"
+        at every width, so it was squeezed to ~200px beside the chat)
+      - a narrow pane puts the address box on its own full-width row (it was down to 20-60px beside the buttons)
+      - a narrow chat column uses a smaller side margin, so the Send button stays on the toolbar row */
+@media (max-width: 860px) { #preview { position: fixed; } }
+@container (max-width: 470px) {
+  .pv-bar { flex-wrap: wrap; height: auto; min-height: var(--strip); padding-top: 6px; padding-bottom: 6px; row-gap: 6px; }
+  .pv-addr { order: 5; flex: 0 0 calc(100% + var(--winctl) - var(--s2)); margin: 0; }
+}
+@container (max-width: 420px) { #messages, #composerWrap { --gutter: 18px; } }
+
+/* 6. short centred texts break into even lines */
+.pv-card p { text-wrap: balance; }

@@ -1312,3 +1312,52 @@ body.pv-full #preview.open { position: fixed !important; top: var(--strip, 44px)
   width: auto !important; min-width: 0 !important; max-width: none !important; z-index: 70; border: 0 !important; box-shadow: none !important; animation: none !important; }
 body.pv-full #main > :not(#topstrip) { visibility: hidden; }
 body.pv-full #topstrip #sbToggle, body.pv-full #topstrip #newChat { visibility: hidden; }
+
+/* =====================================================================
+   Fable pass (2026-11-26): measured glitches and contrast only, nothing restyled.
+   Undo: copy app/backup/before_fable/web_hermes/aura.css back.
+   ===================================================================== */
+
+/* 1. paragraphs of an answer had NO space between them (".bubble p { margin: 0 }" beat ".bubble > * + *"):
+      a normal gap between blocks, a smaller one right under a heading */
+.bubble > * + p { margin-top: .7em; }
+.bubble > :is(h3, h4, h5, h6) + p { margin-top: .4em; }
+
+/* 2. the chat column no longer gets narrower the moment a chat is long enough to scroll, and its right edge
+      lines up with the message box: the scrollbar's 8px are always kept free and taken off the right padding */
+#messages { scrollbar-gutter: stable; padding-right: calc(max(var(--gutter), (100% - var(--content)) / 2) - 8px); }
+
+/* 3. the copy / reply / edit buttons beside one of YOUR messages were cut off when the message was wide
+      (small window, or the preview open): a message now always leaves room for them */
+.msg.user { max-width: min(78%, calc(100% - 92px)); }
+@media (max-width: 900px) { .msg.user { max-width: min(88%, calc(100% - 92px)); } }
+
+/* 4. contrast: each of these measured under 4.5:1 */
+#version { opacity: 1; }
+.code-bar .copy { opacity: 1; }
+.seg button { color: var(--mute); }
+.sl-item.sel .sl-d, .sl-item.sel .sl-d2, .sl-item:hover .sl-d, .sl-item:hover .sl-d2,
+.mode-item:hover small, .mode-item.kb small, .mode-item:focus-visible small,
+.hv-row:hover .hv-time, .hv-row.active .hv-time { color: var(--mute); }
+/* red buttons: dark ink on the light red of the dark theme (white was 2.9:1), white on the deep red of the light theme */
+:root { --on-danger: #1B0706; }
+:root[data-theme="light"] { --on-danger: #fff; }
+@media (prefers-color-scheme: light) { :root[data-theme="auto"] { --on-danger: #fff; } }
+.modal.danger .m-yes, .modal.danger .m-yes:hover, .set-btn.danger:hover, #thumbs .th button:hover { color: var(--on-danger); }
+
+/* 5. light theme: the top-left menu still had the dark theme's heavy black shadow */
+#appMenu { box-shadow: var(--shadow); }
+
+/* 6. small windows with the preview open (regressions of the draggable-sidebars block, which made the pane
+      "position: relative" at every width):
+      - under 861px the pane floats over the chat again (it was squeezed to ~150px beside it)
+      - from 861px to 1000px the pane may get a little narrower instead of pushing the page out of the window
+      - a very narrow pane drops the "Workspace" label, so its Full screen / Close buttons never slide under the window buttons */
+@container (max-width: 310px) { .pv-title, .pv-tag { display: none; } .pv-head { padding-left: 8px; } }
+@media (max-width: 860px) { #preview { position: fixed; } }
+@media (min-width: 861px) and (max-width: 1000px) {
+  #preview.open, #preview.open[style*="--pv-w"] { min-width: 0 !important; flex-shrink: 1 !important; }
+}
+
+/* 7. short centred texts break into even lines */
+.pv-card p { text-wrap: balance; }

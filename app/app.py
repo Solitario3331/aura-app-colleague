@@ -161,14 +161,39 @@ ONE_SHOT_ALLOWED = ["Bash(do.bat:*)", "Bash(python runner.py:*)", "Bash(.venv/Sc
 # ---------------------------------------------------------------------------
 # Small helpers
 # ---------------------------------------------------------------------------
+LOG_MAX_BYTES = 2 * 1024 * 1024         # the log never grows past ~2 MB: the full one is kept once as aura_app.log.1
+_LOG_STATE = {"n": 0, "last": {}}
+
+
+def _trim_log() -> None:
+    """Keep the log small: a full log is put aside as aura_app.log.1 (replacing the older copy) and a new one starts."""
+    try:
+        if LOG_FILE.stat().st_size > LOG_MAX_BYTES:
+            os.replace(LOG_FILE, LOG_FILE.with_name(LOG_FILE.name + ".1"))
+    except OSError:
+        pass
+
+
 def _log(text: str) -> None:
     """Technical details go to a log file, never to the screen."""
     try:
         LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+        _LOG_STATE["n"] += 1
+        if _LOG_STATE["n"] % 200 == 1:   # look at the size on the first line and then every 200 lines, not on every line
+            _trim_log()
         with open(LOG_FILE, "a", encoding="utf-8") as f:
             f.write(time.strftime("%Y-%m-%d %H:%M:%S ") + str(text).rstrip() + "\n")
     except OSError:
         pass
+
+
+def _log_quiet(key: str, text: str, every: float = 300) -> None:
+    """Like _log, but the same kind of line at most once per `every` seconds (a PC without internet would
+    otherwise write the same failure every few seconds)."""
+    now = time.time()
+    if now - _LOG_STATE["last"].get(key, 0) >= every:
+        _LOG_STATE["last"][key] = now
+        _log(text)
 
 
 def _needs_login(text: str) -> bool:
@@ -379,12 +404,31 @@ def _latest_commit(repo: str, branch: str) -> str:
     is never cached, and files read at an exact commit are always the newest."""
     try:
         import requests
-        r = requests.get("https://github.com/{}.git/info/refs?service=git-upload-pack".format(repo), timeout=10)
+        url = "https://github.com/{}.git/info/refs?service=git-upload-pack".format(repo)
+        try:
+            r = _http().get(url, timeout=10)
+        except requests.exceptions.ConnectionError as exc:
+            if isinstance(exc, requests.exceptions.Timeout):
+                raise
+            r = requests.get(url, timeout=10)   # the kept connection had gone stale: once more on a fresh one
         m = re.search(rb"([0-9a-f]{40}) refs/heads/" + re.escape(branch.encode()) + rb"(?=[\n\x00])", r.content)
         return m.group(1).decode() if m else ""
     except Exception as exc:
-        _log("latest commit lookup failed: " + repr(exc))
+        _log_quiet("latest_commit", "latest commit lookup failed: " + repr(exc))
         return ""
+
+
+_HTTP = {"session": None}
+
+
+def _http():
+    """One kept-open connection for the small GitHub look-ups. The page asks for the reminder every few seconds;
+    without this every look-up opened a new secure connection (a full handshake each time)."""
+    import requests
+    s = _HTTP["session"]
+    if s is None:
+        s = _HTTP["session"] = requests.Session()
+    return s
 
 
 def _github_headers(token: str) -> dict:
@@ -1895,7 +1939,12 @@ class Api:
             hdrs = {"Cache-Control": "no-cache"}
             if cfg.get("token"):
                 hdrs["Authorization"] = "token " + cfg["token"]
-            resp = requests.get(url, headers=hdrs, timeout=10)
+            try:
+                resp = _http().get(url, headers=hdrs, timeout=10)
+            except requests.exceptions.ConnectionError as exc:
+                if isinstance(exc, requests.exceptions.Timeout):
+                    raise
+                resp = requests.get(url, headers=hdrs, timeout=10)   # stale kept connection: once more on a fresh one
             if resp.status_code != 200:
                 return {"id": "", "text": ""}
             data = json.loads(resp.content.decode("utf-8-sig"))
@@ -1908,7 +1957,7 @@ class Api:
             self._rem_cache = ((repo, ref), res)
             return res
         except Exception as exc:
-            _log("get_reminder failed: " + repr(exc))
+            _log_quiet("get_reminder", "get_reminder failed: " + repr(exc))
             return {"id": "", "text": ""}
 
     def update_download(self) -> dict:
@@ -3272,6 +3321,13 @@ EXTRA_PACKAGES = (("yt_dlp", "yt-dlp"), ("faster_whisper", "faster-whisper"))   
 GPU_PACKAGES = (("nvidia.cublas", "nvidia-cublas-cu12"), ("nvidia.cudnn", "nvidia-cudnn-cu12"))   # speech on the graphics card (NVIDIA PCs only)
 EXTRAS_STAMP = ROOT / "logs" / "extras_try.txt"
 YTDLP_STAMP = ROOT / "logs" / "ytdlp_update.txt"
+EXTRAS_DELAY = 20                       # seconds after start before the packages are checked
+EXTRAS_CHECK = ("import sys\n"
+                "for m in sys.argv[1:]:\n"
+                "    try:\n"
+                "        __import__(m)\n"
+                "    except BaseException:\n"
+                "        print(m)\n")
 
 
 def _stamp_older_than(path, seconds) -> bool:
@@ -3295,12 +3351,15 @@ def _install_extras() -> None:
     try:
         if Path(CHILD_PY).parent.parent.name != ".venv":
             return
+        time.sleep(EXTRAS_DELAY)   # let the window open first: this check is heavy and nothing waits for it
         wanted = list(EXTRA_PACKAGES) + (list(GPU_PACKAGES) if shutil.which("nvidia-smi") else [])
-        missing = []
-        for mod, pkg in wanted:
-            _o, _e, code, _r = no_window.run_capture([CHILD_PY, "-c", "import " + mod], 60)
-            if code != 0:
-                missing.append(pkg)
+        # one helper process tries every import and prints the ones that fail (it used to be one process per package)
+        out, _e, code, _r = no_window.run_capture([CHILD_PY, "-c", EXTRAS_CHECK] + [mod for mod, _pkg in wanted], 180)
+        if code != 0:
+            _log("extras check could not run (exit %s)" % code)
+            return
+        failed = set((out or "").split())
+        missing = [pkg for mod, pkg in wanted if mod in failed]
         if missing and _stamp_older_than(EXTRAS_STAMP, 24 * 3600):
             _stamp_now(EXTRAS_STAMP)
             _log("installing extra packages: " + ", ".join(missing))

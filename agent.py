@@ -501,7 +501,8 @@ def _read_file(path: str, limit: int = 12000) -> str:
             xml = zf.read("word/document.xml").decode("utf-8", errors="replace")
         xml = re.sub(r"</w:p>", chr(10), xml)
         return re.sub(r"<[^>]+>", "", xml)[:limit]
-    return p.read_text(encoding="utf-8", errors="replace")[:limit]
+    with open(p, "r", encoding="utf-8", errors="replace") as f:   # only the first part is used: never load a huge file whole
+        return f.read(limit)
 
 
 def _video_wait() -> int:

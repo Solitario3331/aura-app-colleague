@@ -2220,6 +2220,33 @@
     }
     setInterval(poll, 500);
   })();
+
+  // preview full screen: the preview pane fills the whole window (the window buttons stay); Esc or the same button goes back
+  (function () {
+    var btn = $("pvFull"), pv = $("preview");
+    if (!btn || !pv) return;
+    var EXPAND = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7"/></svg>';
+    var SHRINK = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 10h-6V4M4 14h6v6M14 10l7-7M3 21l7-7"/></svg>';
+    function isFull() { return document.body.classList.contains("pv-full"); }
+    function set(on) {
+      on = !!on && pv.classList.contains("open");
+      if (on === isFull()) return;
+      document.body.classList.toggle("pv-full", on);
+      btn.innerHTML = on ? SHRINK : EXPAND;
+      btn.title = on ? "Exit full screen (Esc)" : "Full screen";
+      btn.setAttribute("aria-label", on ? "Exit full screen" : "Full screen");
+      // let the layout settle, then tell the page and the real browser view where the pane is now
+      window.dispatchEvent(new Event("resize"));
+      setTimeout(function () { window.dispatchEvent(new Event("resize")); }, 120);
+    }
+    btn.addEventListener("click", function () { set(!isFull()); });
+    $("pvClose").addEventListener("click", function () { set(false); });
+    pv.addEventListener("dblclick", function (e) { if (e.target.closest(".pv-head, .pv-tabs") && !e.target.closest("button")) set(!isFull()); });
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape" && isFull() && !document.querySelector(".modal-back, #updOv")) { e.preventDefault(); e.stopPropagation(); set(false); }
+    }, true);
+    if (window.MutationObserver) new MutationObserver(function () { if (isFull() && !pv.classList.contains("open")) set(false); }).observe(pv, { attributes: true, attributeFilter: ["class"] });
+  })();
   function toggleMax() { if (api) api.win_max().then(showMax).catch(noop); }
   var maxTimer = 0;
   window.addEventListener("resize", function () { clearTimeout(maxTimer); maxTimer = setTimeout(syncMax, 250); });

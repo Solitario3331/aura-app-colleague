@@ -1305,3 +1305,10 @@ body.sb-hidden .rsz-side { display: none; }
 .ig-cap { display: none; }
 .media-card.is-gen.is-adopt { animation: none; }
 .media-card.is-gen .media-frame { position: relative; }
+
+/* ===== preview full screen ===== */
+body.pv-full #rail, body.pv-full #sidebar, body.pv-full .rsz { display: none !important; }
+body.pv-full #preview.open { position: fixed !important; top: var(--strip, 44px) !important; right: 0 !important; bottom: 0 !important; left: 0 !important;
+  width: auto !important; min-width: 0 !important; max-width: none !important; z-index: 70; border: 0 !important; box-shadow: none !important; animation: none !important; }
+body.pv-full #main > :not(#topstrip) { visibility: hidden; }
+body.pv-full #topstrip #sbToggle, body.pv-full #topstrip #newChat { visibility: hidden; }
